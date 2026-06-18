@@ -785,8 +785,10 @@ async function renderCard(d, theme = "sky") {
   // アイコン(1:1)を左右切り取りなしで全体表示できる。
   const squareAvatar = !!$("square-avatar")?.checked;
   const phX = 850, phR = 16;
-  const phW = squareAvatar ? 392 : 360;
-  const phH = squareAvatar ? 392 : 468;
+  // 正方形時も幅は通常枠と同じ360に揃え、右カラム(LICENSE NO. 1250)との余白40pxを確保。
+  // 高さだけ短くなるので元のポートレート枠(202..670)内で縦中央寄せ。
+  const phW = 360;
+  const phH = squareAvatar ? 360 : 468;
   const phY = squareAvatar ? 202 + (468 - phH) / 2 : 202;
   c.save();
   c.shadowColor = "rgba(30,40,80,0.28)";
