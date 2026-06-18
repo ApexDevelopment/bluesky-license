@@ -145,13 +145,19 @@ main {
   align-items: center;
   gap: 16px;
 }
-#license-canvas {
+#license-canvas, #three-container {
   width: 100%;
   max-width: 660px;
   height: auto;
   border-radius: 16px;
   box-shadow: 0 18px 50px rgba(0,0,0,.5);
   background: #0a0d12;
+}
+#three-container {
+  aspect-ratio: 1.593 / 1;
+  overflow: hidden;
+  display: none;
+  touch-action: none;
 }
 
 .info {

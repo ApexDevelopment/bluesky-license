@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bluesky License — driver's-license-style card maker</title>
+  <title>Bluesky License - driver's-license-style card maker</title>
   <meta name="description" content="Turn your Bluesky (AT Protocol) profile into a driver's-license-style card you can download. Unofficial fan card, no login required." />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Bluesky License" />
-  <meta property="og:title" content="Bluesky License — your handle, your identity" />
+  <meta property="og:title" content="Bluesky License: your handle, your identity" />
   <meta property="og:description" content="Turn your Bluesky profile into a driver's-license-style card you can download. Unofficial fan card, no login required." />
   <meta property="og:url" content="https://kojira.github.io/bluesky-license/" />
   <meta property="og:image" content="https://kojira.github.io/bluesky-license/og.jpg" />
@@ -19,18 +19,27 @@
 
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Bluesky License — your handle, your identity" />
+  <meta name="twitter:title" content="Bluesky License: your handle, your identity" />
   <meta name="twitter:description" content="Turn your Bluesky profile into a driver's-license-style card you can download. Unofficial fan card, no login required." />
   <meta name="twitter:image" content="https://kojira.github.io/bluesky-license/og.jpg" />
 
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=electric_car" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=flight" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="site-header">
-    <h1>🦋 Bluesky License</h1>
+    <h1>Bluesky License</h1>
     <p class="tagline" data-i18n="tagline">Turn your Bluesky identity into a driver's-license-style card.</p>
   </header>
 
@@ -74,6 +83,7 @@
       <div class="actions">
         <button id="download-btn" class="btn btn-primary" disabled data-i18n="download">Download PNG</button>
       </div>
+      <div id="three-container"></div>
     </section>
 
     <details class="info">
@@ -81,14 +91,14 @@
       <ul>
         <li data-i18n="a1">Enter a Bluesky handle (e.g. <code>user.bsky.social</code> or a custom domain) or a DID, then press Issue.</li>
         <li data-i18n="a2">Reads public AT Protocol data: profile, plus your posts / likes / follows (up to the most recent 1000) and the follower graph. No login required.</li>
-        <li data-i18n="a3">Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran — plus Mileage and peak posting hours (UTC).</li>
+        <li data-i18n="a3">Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran, Mileage, and peak posting hours (UTC).</li>
         <li data-i18n="a4">HANDLE shows a green ✓ when the account is verified (custom-domain handle, or Bluesky verified / trusted-verifier status).</li>
-        <li data-i18n="a5">This is an <strong>unofficial fan card</strong> for fun — not affiliated with Bluesky, and not an official ID.</li>
+        <li data-i18n="a5">This is an <strong>unofficial fan card</strong> for fun, not affiliated with Bluesky and not an official ID.</li>
       </ul>
     </details>
 
     <details class="info">
-      <summary data-i18n="glossary">Card terms</summary>
+      <summary data-i18n="glossary">Glossary</summary>
       <div data-i18n="glossaryHtml"></div>
     </details>
   </main>

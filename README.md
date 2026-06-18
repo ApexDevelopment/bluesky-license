@@ -22,7 +22,7 @@ python3 -m http.server 8899   # or npx serve
 
 - NAME (display name) + `@handle`, **DID**, **HANDLE** with green ✓ when verified
   (custom-domain handle, or Bluesky trusted-verifier / verified status).
-- ISSUED (today) · CREATED (account creation) · VALID THRU (last seen + 3y) · LICENSE CLASS (rank).
+- ISSUED (today) · CREATED (account creation) · LICENSE CLASS (rank).
 - Stat panel (5 real metrics): Communication (posts) / Followers / Following / Engagement / Veteran (account age).
 - Avatar photo, QR to `bsky.app/profile/<handle>`, holographic security-paper background.
 

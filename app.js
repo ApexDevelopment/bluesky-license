@@ -1,4 +1,4 @@
-// Bluesky License — AT Protocol の公開APIでプロフィールを読み込み、運転免許証風カードを生成する
+// Bluesky License: AT Protocol の公開APIでプロフィールを読み込み、運転免許証風カードを生成する / Load a profile from the public AT Protocol API and generate a driver's-license-style card.
 const API = "https://public.api.bsky.app/xrpc";
 
 const $ = (id) => document.getElementById(id);
@@ -7,20 +7,30 @@ const ctx = canvas.getContext("2d");
 
 let lastData = null;
 
+// Offscreen holographic mask canvas
+const maskCanvas = document.createElement("canvas");
+maskCanvas.width = 1568;
+maskCanvas.height = 984;
+
+// Offscreen card back canvas
+const backCanvas = document.createElement("canvas");
+backCanvas.width = 1568;
+backCanvas.height = 984;
+
+// Three.js state
+let scene, camera, renderer, cardMesh, cardTexture, maskTexture, backTexture, controls;
+let threeInitialized = false;
+let animationFrameId = null;
+
 function setStatus(msg, kind = "") {
   const el = $("status");
   el.textContent = msg;
   el.className = "status" + (kind ? " " + kind : "");
 }
 
-// ===== i18n（フロントUIのみ。カード本体は英語固定）=====
+// ===== i18n (front-end UI only; the card itself always uses English) =====
 let LANG = "en";
 const L = () => I18N[LANG] || I18N.en;
-const doneSummary = (d, words) => {
-  const plus = (v, c) => v + (c ? "+" : "");
-  const gen = d.pdsOk ? plus(d.likesGiven, d.likesCapped) : "—";
-  return `${words.done}: ${d.name} | ${words.mileage} ${d.posts} / WoT ${plus(d.wot, d.wotCapped)} / ${words.engagement} ${plus(d.engagement, d.postsCapped)} / ${words.generosity} ${gen} / ${words.velocity} ${d.velocity.toFixed(1)}/d / ${words.streak} ${d.streak}d / ${words.peak} ${d.peakUTC}${d.verified ? " / verified ✓" : ""}`;
-};
 const I18N = {
   en: {
     tagline: "Turn your Bluesky identity into a driver's-license-style card.",
@@ -31,32 +41,31 @@ const I18N = {
     download: "Download PNG", about: "About / notes",
     a1: "Enter a Bluesky handle (e.g. <code>user.bsky.social</code> or a custom domain) or a DID, then press Issue.",
     a2: "Reads public AT Protocol data: profile, plus your posts / likes / follows (up to the most recent 1000) and the follower graph. No login required.",
-    a3: "Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran — plus Mileage and peak posting hours (UTC).",
+    a3: "Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran, Mileage, and peak posting hours (UTC).",
     a4: "HANDLE shows a green ✓ when the account is verified (custom-domain handle, or Bluesky verified / trusted-verifier status).",
-    a5: "This is an <strong>unofficial fan card</strong> for fun — not affiliated with Bluesky, and not an official ID.",
-    glossary: "Card terms",
+    a5: "This is an <strong>unofficial fan card</strong> for fun, not affiliated with Bluesky and not an official ID.",
+    glossary: "Glossary",
     glossaryHtml: `<dl class="glossary">
-      <dt>Web of Trust</dt><dd>Mutual follows — people you follow who also follow you back.</dd>
+      <dt>Web of Trust</dt><dd>Mutual follows: people you follow who also follow you back.</dd>
       <dt>Engagement</dt><dd>Total likes + reposts + replies your recent posts received.</dd>
       <dt>Generosity</dt><dd>Total likes you've given to others.</dd>
       <dt>Velocity</dt><dd>Posts per day (total posts ÷ account age).</dd>
       <dt>Streak</dt><dd>Your longest run of consecutive days with at least one post.</dd>
       <dt>Veteran</dt><dd>How long your account has existed.</dd>
-      <dt>Mileage</dt><dd>Your total number of posts — like an odometer.</dd>
+      <dt>Mileage</dt><dd>Your total number of posts, similar to an odometer.</dd>
       <dt>Peak (UTC)</dt><dd>The 2-hour window, in UTC, when you post the most.</dd>
-      <dt>DID</dt><dd>Your decentralized identifier (<code>did:plc:…</code>) — the permanent ID behind your handle.</dd>
+      <dt>DID</dt><dd>Your decentralized identifier (<code>did:plc:…</code>), which is the permanent ID behind your handle.</dd>
       <dt>Handle ✓</dt><dd>Your @handle. A green ✓ means verified: a custom-domain handle, or Bluesky verified / trusted-verifier status.</dd>
       <dt>License Class</dt><dd>A rank from your stats: Newcomer → Explorer → Citizen → Veteran.</dd>
       <dt>Valid Thru</dt><dd>A playful "expiry": last activity + 3 years.</dd>
       <dt>Sampling</dt><dd>Analysis covers up to your most recent ~1000 posts/likes and up to 2500 follows (for mutuals). Bigger accounts show "+".</dd>
     </dl>`,
     canvasHint: "Enter a handle or DID and press Issue",
-    stProfile: "Fetching Bluesky profile…",
-    stPosts: (n, m) => `Analyzing posts… ${n}/${m}`,
-    stWoT: (n, m) => `Computing Web of Trust… ${n}/${m}`,
-    stLikes: "Counting likes given…",
-    stAvatar: "Generating avatar / QR…",
-    stDone: (d) => doneSummary(d, { done: "Done", mileage: "mileage", engagement: "engagement", generosity: "generosity", velocity: "velocity", streak: "streak", peak: "peak" }),
+    stProfile: "Fetching Bluesky profile...",
+    stPosts: (n, m) => `Analyzing posts... ${n}/${m}`,
+    stWoT: (n, m) => `Computing Web of Trust... ${n}/${m}`,
+    stLikes: "Counting likes given...",
+    stAvatar: "Generating avatar / QR...",
     err: (m) => "Error: " + m,
     errEnter: "Enter a handle or DID",
     errNotFound: "Profile not found",
@@ -96,7 +105,6 @@ const I18N = {
     stWoT: (n, m) => `Web of Trust を計算中… ${n}/${m}`,
     stLikes: "付けたいいねを集計中…",
     stAvatar: "アバター / QR を生成中…",
-    stDone: (d) => doneSummary(d, { done: "完了", mileage: "投稿", engagement: "反応", generosity: "いいね魂", velocity: "速度", streak: "連続", peak: "ピーク" }),
     err: (m) => "エラー: " + m,
     errEnter: "ハンドル または DID を入力してください",
     errNotFound: "プロフィールが見つかりません",
@@ -122,11 +130,11 @@ function applyLang(choice) {
   if (!lastData) drawPlaceholder();
 }
 
-const MAX_RECORDS = 1000; // 解析の取得上限（直近 N 件）
-const THROTTLE_MS = 80;   // API 連続呼び出しの間隔（公開APIに優しく）
+const MAX_RECORDS = 1000; // 解析の取得上限（直近 N 件） / Analysis fetch limit (most recent N records)
+const THROTTLE_MS = 80;   // API 連続呼び出しの間隔（公開APIに優しく） / Delay between consecutive API calls to be gentle with the public API
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// DID から PDS エンドポイントを解決
+// DID から PDS エンドポイントを解決 / Resolve the PDS endpoint from a DID
 async function resolvePds(did) {
   try {
     if (did.startsWith("did:plc:")) {
@@ -144,7 +152,7 @@ async function resolvePds(did) {
   return null;
 }
 
-// PDS の listRecords でコレクションを最大 max 件まで数える（{ count, capped }）
+// PDS の listRecords でコレクションを最大 max 件まで数える（{ count, capped }） / Count collection records via PDS listRecords up to max entries ({ count, capped })
 async function countRecords(pds, did, collection, max) {
   let cursor = null, count = 0;
   const pagesMax = Math.ceil(max / 100);
@@ -161,7 +169,7 @@ async function countRecords(pds, did, collection, max) {
   return { count, capped: true };
 }
 
-// 自分の投稿（リポスト除外）を最大 max 件取得 → タイムスタンプとエンゲージメント
+// 自分の投稿（リポスト除外）を最大 max 件取得 → タイムスタンプとエンゲージメント / Fetch up to max of the user's own posts (excluding reposts), with timestamps and engagement
 async function fetchAuthorPosts(did, max) {
   let cursor = null;
   const posts = [];
@@ -172,7 +180,7 @@ async function fetchAuthorPosts(did, max) {
     let j;
     try { j = await fetch(url).then((r) => r.json()); } catch { break; }
     for (const it of (j.feed || [])) {
-      if (it.reason) continue; // リポストは除外
+      if (it.reason) continue; // リポストは除外 / Exclude reposts
       const p = it.post;
       if (!p || !p.author || p.author.did !== did) continue;
       const ts = Date.parse((p.record && p.record.createdAt) || p.indexedAt);
@@ -187,7 +195,7 @@ async function fetchAuthorPosts(did, max) {
   return posts;
 }
 
-// フォロー/フォロワーの DID 配列を取得（最大 max 件）
+// フォロー/フォロワーの DID 配列を取得（最大 max 件） / Fetch follow/follower DID lists up to max entries
 async function fetchGraphList(method, did, max) {
   let cursor = null;
   const out = [];
@@ -205,8 +213,8 @@ async function fetchGraphList(method, did, max) {
   return out;
 }
 
-// WoT＝相互フォロー数。小さい側（通常はフォロー数）を全取得し getRelationships で相互判定。
-// → フォロワー数百万の巨大アカウントでも、フォロー数が常識的なら正確に出せる。
+// WoT＝相互フォロー数。小さい側（通常はフォロー数）を全取得し getRelationships で相互判定。 / WoT is the mutual-follow count; fetch the smaller side (usually follows) and classify mutuals via getRelationships.
+// → フォロワー数百万の巨大アカウントでも、フォロー数が常識的なら正確に出せる。 / This stays accurate even for accounts with millions of followers, as long as their follow count is still manageable.
 const WOT_CAP = 2500;
 async function computeWoT(did, followsCount, followersCount) {
   const useFollows = (followsCount || 0) <= (followersCount || 0);
@@ -227,7 +235,7 @@ async function computeWoT(did, followsCount, followersCount) {
   return { wot: mutual, capped: list.length >= WOT_CAP };
 }
 
-// 最長連続投稿日数（UTC日付ベース）
+// 最長連続投稿日数（UTC日付ベース） / Longest streak of consecutive posting days (UTC date basis)
 function longestStreak(timestamps) {
   const days = [...new Set(timestamps.map((t) => Math.floor(t / 86400)))].sort((a, b) => a - b);
   if (!days.length) return 0;
@@ -237,7 +245,7 @@ function longestStreak(timestamps) {
   }
   return best;
 }
-// 最も投稿が多い2時間帯（UTC）
+// 最も投稿が多い2時間帯（UTC） / Two-hour UTC window with the most posts
 function peakBand(timestamps) {
   if (!timestamps.length) return "—";
   const h = new Array(24).fill(0);
@@ -245,10 +253,10 @@ function peakBand(timestamps) {
   let bi = 0, bv = -1;
   for (let i = 0; i < 24; i++) { const v = h[i] + h[(i + 1) % 24]; if (v > bv) { bv = v; bi = i; } }
   const p = (n) => String(n).padStart(2, "0");
-  return `${p(bi)}–${p((bi + 2) % 24)} UTC`;
+  return `${p(bi)}-${p((bi + 2) % 24)} UTC`;
 }
 
-// ===== データ取得＋解析 =====
+// ===== Data fetching and analysis =====
 async function fetchProfile(actor) {
   setStatus(L().stProfile);
   const p = await fetch(`${API}/app.bsky.actor.getProfile?actor=${encodeURIComponent(actor)}`)
@@ -260,20 +268,19 @@ async function fetchProfile(actor) {
   const posts = p.postsCount || 0;
   const ageDays = createdAt ? Math.max(1, (Date.now() / 1000 - createdAt) / 86400) : 1;
 
-  // 投稿解析（エンゲージメント・連続日数・ピーク時間帯）
+  // 投稿解析（エンゲージメント・連続日数・ピーク時間帯） / Post analysis: engagement, streak length, and peak posting time
   const postRecs = await fetchAuthorPosts(did, MAX_RECORDS);
   const engagement = postRecs.reduce((a, r) => a + r.eng, 0);
   const streak = longestStreak(postRecs.map((r) => r.ts));
   const peakUTC = peakBand(postRecs.map((r) => r.ts));
   const postsCapped = postRecs.length >= MAX_RECORDS;
 
-  // WoT（相互フォロー）— 小さい側を全取得して getRelationships で相互判定
-  setStatus(L().stWoT(0, "…"));
+  // WoT (相互フォロー): 小さい側を全取得して getRelationships で相互判定 / Fetch the smaller side and detect mutuals through getRelationships
   const wotRes = await computeWoT(did, p.followsCount, p.followersCount);
   const wot = wotRes.wot;
   const wotCapped = wotRes.capped;
 
-  // Generosity（付けたいいね総数）— repo を直接参照
+  // Generosity (付けたいいね総数): repo を直接参照 / Total likes given, counted directly from the repo
   setStatus(L().stLikes);
   let likesGiven = 0, likesCapped = false;
   const pds = await resolvePds(did);
@@ -283,7 +290,7 @@ async function fetchProfile(actor) {
     likesCapped = r.capped;
   }
 
-  // 検証：カスタムドメイン handle（= ドメイン認証）または trusted verifier / verified
+  // 検証：カスタムドメイン handle（= ドメイン認証）または trusted verifier / verified / Verification: custom-domain handle (domain-verified) or trusted verifier / verified
   const v = p.verification || {};
   const customDomain = !!p.handle && !/\.bsky\.social$/i.test(p.handle) && p.handle !== "handle.invalid";
   const verified = customDomain || v.verifiedStatus === "valid" || v.trustedVerifierStatus === "valid";
@@ -293,20 +300,21 @@ async function fetchProfile(actor) {
     handle: p.handle || "",
     name: p.displayName || p.handle || "NO NAME",
     picture: p.avatar || "",
-    posts,                          // Mileage（オドメーター）
-    velocity: posts / ageDays,      // 1日あたり投稿数
+    posts,                          // Mileage（オドメーター） / Mileage (odometer-style total posts)
+    velocity: posts / ageDays,      // 1日あたり投稿数 / Posts per day
     engagement, postsCapped,
     streak,
     peakUTC,
     wot, wotCapped,
     likesGiven, likesCapped, pdsOk: !!pds,
+    pds: pds || "https://bsky.social",
     createdAt,
     lastSeen: lastSeen || createdAt || Math.floor(Date.now() / 1000),
     verified,
   };
 }
 
-// ===== ランク（実データ基準）=====
+// ===== Rank (based on real data) =====
 function computeRank(d) {
   const ageY = d.createdAt ? (Date.now() / 1000 - d.createdAt) / (365.25 * 24 * 3600) : 0;
   if (d.wot >= 300 || ageY >= 3) return "BLUESKY VETERAN";
@@ -315,26 +323,26 @@ function computeRank(d) {
   return "BLUESKY NEWCOMER";
 }
 
-// 実数 → ★(1..5)。log スケール。
+// 実数 → ★(1..5)。log スケール。 / Convert a numeric value to a 1..5 star rating on a log scale.
 function starFrom(x, k, base = 1) {
   const n = Math.round(Math.log10((x || 0) + 1) * k) + base;
   return Math.max(1, Math.min(5, n));
 }
-// ステータス（6項目・すべて実データ）。2×3グリッドで表示。各 {label, n, icon}
+// ステータス（6項目・すべて実データ）。2×3グリッドで表示。各 {label, n, icon} / Status metrics: six real-data categories shown in a 2x3 grid as {label, n, icon}
 function computeStars(d) {
   const ageY = d.createdAt ? (Date.now() / 1000 - d.createdAt) / (365.25 * 24 * 3600) : 0;
   return [
     { label: "Web of Trust", icon: "shield", n: starFrom(d.wot, 1.4) },
     { label: "Engagement", icon: "bolt", n: starFrom(d.engagement, 1.2) },
-    { label: "Generosity", icon: "person", n: starFrom(d.likesGiven, 1.2) },
+    { label: "Generosity", icon: "heart", n: starFrom(d.likesGiven, 1.2) },
     { label: "Velocity", icon: "relay", n: starFrom(d.velocity, 2.5) },
     { label: "Streak", icon: "bubble", n: starFrom(d.streak, 2.2) },
-    // Veteran：Bluesky は最長でも ~3.4 年なので、3年以上＝星5になるよう調整
-    { label: "Veteran", icon: "relay", n: ageY >= 3 ? 5 : ageY >= 2 ? 4 : ageY >= 1 ? 3 : ageY >= 0.25 ? 2 : 1 },
+    // Veteran：Bluesky は最長でも ~3.4 年なので、3年以上＝星5になるよう調整 / Bluesky is only about 3.4 years old at most, so 3+ years maps to 5 stars
+    { label: "Veteran", icon: "person", n: ageY >= 3 ? 5 : ageY >= 2 ? 4 : ageY >= 1 ? 3 : ageY >= 0.25 ? 2 : 1 },
   ];
 }
 
-// ===== 画像ロード（CORS対策のため weserv プロキシにフォールバック）=====
+// ===== Image loading (fall back to the weserv proxy for CORS issues) =====
 function loadImage(url, { crossOrigin = true } = {}) {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -354,7 +362,7 @@ async function loadAvatar(url) {
   return null;
 }
 
-// 背景写真（同一オリジンのアセット）をキャッシュ付きでロード
+// 背景写真（同一オリジンのアセット）をキャッシュ付きでロード / Load same-origin background photos with caching
 const _bgCache = {};
 async function getBgPhoto(src) {
   if (!src) return null;
@@ -364,7 +372,7 @@ async function getBgPhoto(src) {
   return _bgCache[src];
 }
 
-// ===== QRコード生成（bsky.app プロフィールへのリンク）=====
+// ===== QR code generation (linking to the bsky.app profile) =====
 async function makeQR(text) {
   try {
     const QR = (await import("https://esm.sh/qrcode@1.5.4")).default;
@@ -375,7 +383,7 @@ async function makeQR(text) {
   }
 }
 
-// ===== 描画ユーティリティ =====
+// ===== Drawing utilities =====
 function roundRect(c, x, y, w, h, r) {
   c.beginPath();
   c.moveTo(x + r, y);
@@ -420,18 +428,19 @@ function guilloche(c, cx, cy, R, amp, k, turns, color, alpha, lw = 1) {
   c.stroke();
   c.restore();
 }
-// 蝶（Bluesky）グリフ
+// 蝶（Bluesky）グリフ / Butterfly (Bluesky) glyph
 function drawButterfly(c, cx, cy, s, col) {
   c.save();
   c.translate(cx, cy);
+  const scale = (s * 1.68) / 64;
+  c.scale(scale, scale);
+  c.translate(-32, -31.5);
   c.fillStyle = col;
-  c.beginPath(); c.ellipse(-0.42 * s, -0.30 * s, 0.42 * s, 0.60 * s, -0.55, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.ellipse(0.42 * s, -0.30 * s, 0.42 * s, 0.60 * s, 0.55, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.ellipse(-0.34 * s, 0.42 * s, 0.32 * s, 0.42 * s, 0.6, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.ellipse(0.34 * s, 0.42 * s, 0.32 * s, 0.42 * s, -0.6, 0, Math.PI * 2); c.fill();
+  const p = new Path2D("M14.6366 7.81116C21.8491 13.3459 29.607 24.5681 32.4553 30.5905C35.3038 24.5685 43.0612 13.3458 50.2739 7.81116C55.4781 3.81752 63.9102 0.727462 63.9102 10.5602C63.9102 12.5239 62.8087 27.0565 62.1627 29.4158C59.9171 37.6184 51.7344 39.7106 44.4557 38.4443C57.1787 40.6577 60.4153 47.9893 53.4255 55.3209C40.1504 69.2451 34.3454 51.8273 32.8572 47.3642C32.4543 46.1554 32.4558 46.1554 32.0529 47.3642C30.5654 51.8273 24.7605 69.2455 11.4847 55.3209C4.49475 47.9893 7.73124 40.6573 20.4544 38.4443C13.1755 39.7106 4.99271 37.6184 2.74748 29.4158C2.10144 27.0563 1 12.5237 1 10.5602C1 0.727462 9.43267 3.81752 14.6366 7.81116Z");
+  c.fill(p);
   c.restore();
 }
-// 六角バッジ＋白い蝶（ブランドロゴ）
+// 六角バッジ＋白い蝶（ブランドロゴ） / Hex badge with white butterfly (brand logo)
 function drawHexLogo(c, cx, cy, s, colA, colB) {
   c.save();
   hexPath(c, cx, cy, s);
@@ -446,8 +455,222 @@ function drawHexLogo(c, cx, cy, s, colA, colB) {
   drawButterfly(c, cx, cy, s * 0.66, "#ffffff");
   c.restore();
 }
-function drawShield(c, cx, cy, w, h, t) {
+// 円バッジ＋白い蝶（QRコード用ブランドロゴ） / Circle badge with white butterfly (brand logo for QR code)
+function drawCircleLogo(c, cx, cy, r, colA, colB) {
   c.save();
+  c.beginPath();
+  c.arc(cx, cy, r, 0, Math.PI * 2);
+  const g = c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+  g.addColorStop(0, colA);
+  g.addColorStop(1, colB);
+  c.fillStyle = g;
+  c.fill();
+  c.lineWidth = Math.max(1, r * 0.05);
+  c.strokeStyle = "rgba(255,255,255,0.55)";
+  c.stroke();
+  drawButterfly(c, cx, cy, r * 0.66, "#ffffff");
+  c.restore();
+}
+// Barcode drawing using JsBarcode
+async function drawBarcode(c, text, x, y, width, height, color) {
+  try {
+    const JsBarcode = (await import("https://esm.sh/jsbarcode@3.11.6")).default;
+    const bcCanvas = document.createElement("canvas");
+    JsBarcode(bcCanvas, text, {
+      format: "CODE128",
+      lineColor: color,
+      background: "transparent",
+      width: 3,
+      height: height,
+      displayValue: false,
+      margin: 0
+    });
+    c.drawImage(bcCanvas, x, y, width, height);
+  } catch (e) {
+    console.error("Barcode generation failed:", e);
+    // Draw a fallback pattern if library fails to load
+    c.fillStyle = color;
+    c.fillRect(x, y, width, height);
+  }
+}
+
+// Render the card back
+async function renderCardBack(d, theme = "sky") {
+  const t = THEMES[theme] || THEMES.sky;
+  const c = backCanvas.getContext("2d");
+  const W = backCanvas.width, H = backCanvas.height;
+  c.clearRect(0, 0, W, H);
+  c.lineCap = "round";
+  c.lineJoin = "round";
+
+  // Background gradient
+  const bg = c.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, t.paper[0]);
+  bg.addColorStop(0.5, t.paper[1]);
+  bg.addColorStop(1, t.paper[2]);
+  roundRect(c, 0, 0, W, H, 24);
+  c.fillStyle = bg;
+  c.fill();
+
+  // Background waves and security patterns
+  {
+    const off = document.createElement("canvas");
+    off.width = W; off.height = H;
+    const g = off.getContext("2d");
+    g.lineCap = "round"; g.lineJoin = "round";
+    for (let i = 0; i < 78; i++) {
+      const yy = 26 + i * 12.4;
+      g.strokeStyle = i % 2 ? t.line : t.accent;
+      g.lineWidth = 1;
+      g.beginPath();
+      for (let x = 24; x <= W - 24; x += 5) {
+        const y2 = yy + Math.sin(x / 44 + i * 0.55) * 7 + Math.sin(x / 128 - i * 0.32) * 5 + Math.cos(x / 320 + i * 0.12) * 3;
+        x === 24 ? g.moveTo(x, y2) : g.lineTo(x, y2);
+      }
+      g.stroke();
+    }
+    for (let j = 0; j < 50; j++) {
+      const xx = 24 + j * 31;
+      g.strokeStyle = j % 2 ? t.accent : t.line;
+      g.lineWidth = 1;
+      g.beginPath();
+      for (let y = 24; y <= H - 24; y += 6) {
+        const x2 = xx + Math.sin(y / 50 + j * 0.5) * 6 + Math.sin(y / 150 - j * 0.3) * 4;
+        y === 24 ? g.moveTo(x2, y) : g.lineTo(x2, y);
+      }
+      g.stroke();
+    }
+    guilloche(g, W * 0.20, H * 0.34, 230, 74, 9, 26, t.accent, 1, 1);
+    guilloche(g, W * 0.20, H * 0.34, 150, 52, 14, 26, t.accent2, 1, 1);
+    guilloche(g, W * 0.50, H * 0.50, 380, 104, 7, 30, t.accent, 1, 1);
+    guilloche(g, W * 0.50, H * 0.50, 250, 84, 17, 26, t.accent2, 1, 1);
+    guilloche(g, W * 0.83, H * 0.72, 210, 66, 11, 24, t.accent2, 1, 1);
+    guilloche(g, W * 0.83, H * 0.72, 130, 46, 16, 24, t.accent, 1, 1);
+    for (const [px, py] of [[110, 120], [W - 120, 120], [120, H - 110], [W - 120, H - 110]]) {
+      guilloche(g, px, py, 70, 26, 13, 18, t.accent, 1, 1);
+    }
+    g.globalCompositeOperation = "destination-out";
+    const fade = g.createLinearGradient(0, 0, 0, H);
+    fade.addColorStop(0.0, "rgba(0,0,0,0)");
+    fade.addColorStop(1.0, "rgba(0,0,0,0.5)");
+    g.fillStyle = fade;
+    g.fillRect(0, 0, W, H);
+    g.globalCompositeOperation = "source-over";
+    c.save();
+    c.globalAlpha = 0.20;
+    c.drawImage(off, 0, 0);
+    c.restore();
+  }
+
+  // Subtle border outline
+  c.save();
+  c.strokeStyle = t.border;
+  c.lineWidth = 6;
+  c.globalAlpha = 0.2;
+  roundRect(c, 20, 20, W - 40, H - 40, 16);
+  c.stroke();
+  c.restore();
+
+  // Top header title
+  c.fillStyle = t.accent;
+  c.font = "800 32px 'Hiragino Sans',sans-serif";
+  c.textAlign = "center";
+  c.fillText("AT PROTOCOL IDENTITY CARD", W / 2, 100);
+
+  // Divider line
+  c.beginPath();
+  c.moveTo(100, 135);
+  c.lineTo(W - 100, 135);
+  c.strokeStyle = t.line;
+  c.lineWidth = 2;
+  c.stroke();
+
+  // Draw Ghost Avatar
+  const squareAvatar = !!$("square-avatar")?.checked;
+  const w = 240;
+  const h = squareAvatar ? 240 : 312;
+  const x = 160;
+  const y = 220 + (320 - h) / 2; // vertically center inside Y=220..540
+  
+  if (d._avatar) {
+    const img = d._avatar;
+    const ratio = squareAvatar
+      ? Math.min(w / img.width, h / img.height)
+      : Math.max(w / img.width, h / img.height);
+    const dw = img.width * ratio, dh = img.height * ratio;
+    c.save();
+    c.filter = "grayscale(100%)";
+    c.globalAlpha = 0.18;
+    roundRect(c, x, y, w, h, 12);
+    c.clip();
+    c.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
+    c.restore();
+  }
+
+  // Draw thin border around ghost avatar frame
+  c.save();
+  c.strokeStyle = t.border;
+  c.lineWidth = 2;
+  c.globalAlpha = 0.15;
+  roundRect(c, x, y, w, h, 12);
+  c.stroke();
+  c.restore();
+
+  // Metadata Fields on the right side of the avatar
+  const fieldX = 460;
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+
+  const didParts = (d.did || "").split(":");
+  const didMethod = didParts.length > 1 ? didParts[1].toUpperCase() : "PLC";
+
+  const rows = [
+    { label: "HOLDER", val: d.name + (d.handle ? " (@" + d.handle + ")" : "") },
+    { label: "ISSUING AUTHORITY", val: d.pds || "https://bsky.social" },
+    { label: "DOCUMENT TYPE", val: `VERIFIED DID RECORD (DID:${didMethod})` }
+  ];
+
+  let rowY = 240;
+  for (const row of rows) {
+    c.fillStyle = t.sub;
+    c.font = "700 18px 'Hiragino Sans',sans-serif";
+    c.fillText(row.label, fieldX, rowY);
+
+    c.fillStyle = t.ink;
+    c.font = "600 24px 'SF Mono','Menlo','Consolas',monospace";
+    // Truncate value if too long to prevent spillover
+    let valText = row.val;
+    if (c.measureText(valText).width > 900) {
+      while (valText.length > 5 && c.measureText(valText + "...").width > 900) {
+        valText = valText.slice(0, -1);
+      }
+      valText += "...";
+    }
+    c.fillText(valText, fieldX, rowY + 34);
+
+    rowY += 105;
+  }
+
+  // Draw barcode at the bottom
+  const bcText = d.did || "";
+  await drawBarcode(c, bcText, 150, 630, W - 300, 130, t.ink);
+
+  // Draw DID text under the barcode
+  c.fillStyle = t.sub;
+  c.textAlign = "center";
+  c.textBaseline = "top";
+  c.font = "600 22px 'SF Mono','Menlo','Consolas',monospace";
+  c.fillText(bcText, W / 2, 775);
+
+  // Disclaimer text at the very bottom
+  c.fillStyle = t.sub;
+  c.font = "500 16px 'Hiragino Sans',sans-serif";
+  c.globalAlpha = 0.7;
+  c.fillText("This is an unofficial fan-made identity card cardholder back. No legal value.", W / 2, 850);
+  c.globalAlpha = 1;
+}
+
+function drawShieldPath(c, cx, cy, w, h) {
   const x = cx - w / 2, y = cy - h / 2;
   c.beginPath();
   c.moveTo(cx, y);
@@ -457,6 +680,11 @@ function drawShield(c, cx, cy, w, h, t) {
   c.quadraticCurveTo(x, y + h * 0.9, x, y + h * 0.55);
   c.lineTo(x, y + h * 0.2);
   c.closePath();
+}
+function drawShield(c, cx, cy, w, h, t) {
+  c.save();
+  const x = cx - w / 2, y = cy - h / 2;
+  drawShieldPath(c, cx, cy, w, h);
   const g = c.createLinearGradient(x, y, x + w, y + h);
   g.addColorStop(0, "#dfeeff");
   g.addColorStop(0.5, "#dce8ff");
@@ -468,29 +696,34 @@ function drawShield(c, cx, cy, w, h, t) {
   c.globalAlpha = 0.75;
   c.stroke();
   c.globalAlpha = 1;
-  const lw = w * 0.26, lh = h * 0.2, lx = cx - lw / 2, ly = cy - lh * 0.1;
+
+  // Smaller lock icon near the top of the shield
+  const lockScale = 0.55;
+  const lw = w * 0.26 * lockScale;
+  const lh = h * 0.2 * lockScale;
+  const lx = cx - lw / 2;
+  const ly = cy - h * 0.18;
   c.fillStyle = t.accent;
   roundRect(c, lx, ly, lw, lh, 4);
   c.fill();
-  c.lineWidth = w * 0.07;
+  c.lineWidth = w * 0.07 * lockScale;
   c.strokeStyle = t.accent;
   c.beginPath();
   c.arc(cx, ly, lw * 0.32, Math.PI, 0);
   c.stroke();
+
+  // "VERIFIED" and "DID DOCUMENT" text right over top of the shield
+  c.fillStyle = t.accent2;
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.font = "800 22px 'Hiragino Sans',sans-serif";
+  c.fillText("VERIFIED", cx, cy + h * 0.06);
+  c.font = "800 17px 'Hiragino Sans',sans-serif";
+  c.fillText("DID DOCUMENT", cx, cy + h * 0.20);
+
   c.restore();
 }
-function drawHoloSeal(c, cx, cy, r) {
-  c.save();
-  const hues = ["#bfe3ff", "#cfe0ff", "#c9f0ff", "#d9eaff", "#e6f3ff"];
-  for (let i = 0; i < 5; i++) guilloche(c, cx, cy, r - 6 - i * 3, 6 + i * 2, 7 + i, 3, hues[i], 0.55, 1.3);
-  c.beginPath();
-  c.arc(cx, cy, r, 0, Math.PI * 2);
-  c.lineWidth = 2;
-  c.strokeStyle = "rgba(80,140,230,0.5)";
-  c.stroke();
-  drawHexLogo(c, cx, cy, r * 0.34, "#1e9df1", "#0a63d6");
-  c.restore();
-}
+
 function drawStatIcon(c, name, x, y, s, color) {
   c.save();
   c.fillStyle = color;
@@ -551,6 +784,17 @@ function drawStatIcon(c, name, x, y, s, color) {
     c.quadraticCurveTo(x + s * 0.5, y + s * 0.5, x + s * 0.9, y + s);
     c.closePath();
     c.fill();
+  } else if (name === "heart") {
+    c.beginPath();
+    c.moveTo(x + s * 0.5, y + s * 0.9);
+    c.bezierCurveTo(x + s * 0.14, y + s * 0.68, x, y + s * 0.42, x, y + s * 0.24);
+    c.bezierCurveTo(x, y + s * 0.08, x + s * 0.12, y, x + s * 0.28, y);
+    c.bezierCurveTo(x + s * 0.4, y, x + s * 0.5, y + s * 0.1, x + s * 0.5, y + s * 0.2);
+    c.bezierCurveTo(x + s * 0.5, y + s * 0.1, x + s * 0.6, y, x + s * 0.72, y);
+    c.bezierCurveTo(x + s * 0.88, y, x + s, y + s * 0.08, x + s, y + s * 0.24);
+    c.bezierCurveTo(x + s, y + s * 0.42, x + s * 0.86, y + s * 0.68, x + s * 0.5, y + s * 0.9);
+    c.closePath();
+    c.fill();
   }
   c.restore();
 }
@@ -575,44 +819,49 @@ function drawPill(c, text, x, y, { bg, fg, font, padX = 14, h = 34, r = 7 }) {
   c.fillText(text, x + padX, y + h / 2 + 1);
   return w;
 }
-// 車アイコン（Material 未読込時のフォールバック）
-function drawCar(c, x, cy, color) {
+// 車アイコン（Material 未読込時のフォールバック） / Airplane icon fallback when Material Symbols is unavailable
+function drawAirplane(c, x, cy, color) {
   c.save();
-  c.translate(x, cy);
+  c.translate(x + 28, cy);
   c.fillStyle = color;
   c.beginPath();
-  c.moveTo(2, 4);
-  c.lineTo(2, -2);
-  c.quadraticCurveTo(2, -5, 8, -6);
-  c.lineTo(15, -6);
-  c.quadraticCurveTo(20, -16, 31, -16);
-  c.lineTo(40, -16);
-  c.quadraticCurveTo(49, -15, 54, -6);
-  c.lineTo(60, -5);
-  c.quadraticCurveTo(64, -4, 64, 0);
-  c.lineTo(64, 4);
-  c.quadraticCurveTo(64, 7, 60, 7);
-  c.lineTo(6, 7);
-  c.quadraticCurveTo(2, 7, 2, 4);
+  c.moveTo(-24, -4);
+  c.lineTo(4, -4);
+  c.quadraticCurveTo(18, -4, 24, 0);
+  c.quadraticCurveTo(18, 4, 4, 4);
+  c.lineTo(-24, 4);
   c.closePath();
   c.fill();
-  c.fillStyle = "rgba(255,255,255,0.78)";
+  
   c.beginPath();
-  c.moveTo(19, -6); c.lineTo(23, -14); c.lineTo(31, -14); c.lineTo(31, -6); c.closePath(); c.fill();
+  c.moveTo(-6, -4);
+  c.lineTo(-12, -22);
+  c.lineTo(-4, -22);
+  c.lineTo(6, -4);
+  c.lineTo(6, 4);
+  c.lineTo(-4, 22);
+  c.lineTo(-12, 22);
+  c.lineTo(-6, 4);
+  c.closePath();
+  c.fill();
+
   c.beginPath();
-  c.moveTo(34, -6); c.lineTo(34, -14); c.lineTo(39, -14); c.quadraticCurveTo(46, -13, 49, -6); c.closePath(); c.fill();
-  c.fillStyle = "#2a3550";
-  c.beginPath(); c.arc(18, 8, 7, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(49, 8, 7, 0, Math.PI * 2); c.fill();
-  c.fillStyle = "#e7ecf6";
-  c.beginPath(); c.arc(18, 8, 3, 0, Math.PI * 2); c.fill();
-  c.beginPath(); c.arc(49, 8, 3, 0, Math.PI * 2); c.fill();
+  c.moveTo(-20, -2);
+  c.lineTo(-24, -10);
+  c.lineTo(-21, -10);
+  c.lineTo(-15, -2);
+  c.lineTo(-15, 2);
+  c.lineTo(-21, 10);
+  c.lineTo(-24, 10);
+  c.lineTo(-20, 2);
+  c.closePath();
+  c.fill();
   c.restore();
 }
 
 const THEMES = {
   sky:      { accent: "#1185fe", accent2: "#0a63d6", ink: "#10243f", sub: "#3a5680", line: "#9fc0ef", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eef5ff", "#eef1fc", "#f2f6ff"] },
-  // 青空写真モード（ユーザー撮影の写真を薄く敷く）
+  // 青空写真モード（ユーザー撮影の写真を薄く敷く） / Blue-sky photo mode with a lightly overlaid user-shot background image
   skyphoto: { accent: "#0a63d6", accent2: "#0a4fb0", ink: "#0e244f", sub: "#33507e", line: "#bcd6f5", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#f4f9ff", "#eef5ff", "#f6fbff"], photo: "bg/sky1.jpg", photoAlpha: 0.34 },
   sunset:   { accent: "#e2603a", accent2: "#c23b6a", ink: "#3a1f24", sub: "#7a4a52", line: "#f0b9a0", border: "#e2603a", gold1: "#e8c074", gold2: "#c98a3a", paper: ["#fff3ec", "#ffeef0", "#fff0e6"] },
   mint:     { accent: "#10a37f", accent2: "#0a7d8c", ink: "#0e2a26", sub: "#3a6a60", line: "#a8e0d0", border: "#10a37f", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eefbf6", "#eef6f4", "#f2fbf8"] },
@@ -620,7 +869,7 @@ const THEMES = {
   gold:     { accent: "#b4863a", accent2: "#9a6b1e", ink: "#2a2206", sub: "#5a4d22", line: "#dcc79a", border: "#b4863a", gold1: "#e6cd84", gold2: "#b4863a", paper: ["#fffaf0", "#fff4e2", "#fdeed6"] },
 };
 
-// ===== カード描画（高級ホログラム調 / 英語表記）=====
+// ===== Card rendering (premium holographic look / English labels) =====
 async function renderCard(d, theme = "sky") {
   const t = THEMES[theme] || THEMES.sky;
   const c = ctx;
@@ -629,13 +878,17 @@ async function renderCard(d, theme = "sky") {
   c.lineCap = "round";
   c.lineJoin = "round";
 
-  let carFont = false;
+  // Clear the offscreen holographic mask canvas
+  const mCtx = maskCanvas.getContext("2d");
+  mCtx.clearRect(0, 0, W, H);
+
+  let flightFont = false;
   try {
-    await document.fonts.load('400 46px "Material Symbols Outlined"', "electric_car");
-    carFont = document.fonts.check('400 46px "Material Symbols Outlined"');
+    await document.fonts.load('400 46px "Material Symbols Outlined"', "flight");
+    flightFont = document.fonts.check('400 46px "Material Symbols Outlined"');
   } catch {}
 
-  // ===== 背景（イリデッセント）=====
+  // ===== Background (iridescent) =====
   const bg = c.createLinearGradient(0, 0, W, H);
   bg.addColorStop(0, t.paper[0]);
   bg.addColorStop(0.5, t.paper[1]);
@@ -648,7 +901,7 @@ async function renderCard(d, theme = "sky") {
   roundRect(c, 0, 0, W, H, 24);
   c.clip();
 
-  // 背景写真（テーマに photo があれば、cover で薄く敷く）
+  // 背景写真（テーマに photo があれば、cover で薄く敷く） / If the theme has a photo, draw it softly with cover sizing
   if (t.photo) {
     const ph = await getBgPhoto(t.photo);
     if (ph) {
@@ -670,7 +923,7 @@ async function renderCard(d, theme = "sky") {
   c.fillStyle = sheen;
   c.fillRect(0, 0, W, H);
 
-  // 地紋：別キャンバスに不透明で一度だけ描き、最後に1回だけ薄く合成（端末差を防ぐ）
+  // 地紋：別キャンバスに不透明で一度だけ描き、最後に1回だけ薄く合成（端末差を防ぐ） / Draw the security pattern once on a separate canvas, then blend it back once to reduce device-specific differences
   {
     const off = document.createElement("canvas");
     off.width = W; off.height = H;
@@ -718,6 +971,14 @@ async function renderCard(d, theme = "sky") {
     c.globalAlpha = 0.20;
     c.drawImage(off, 0, 0);
     c.restore();
+
+    // Copy the background waves and guilloches into the holographic mask canvas
+    mCtx.drawImage(off, 0, 0);
+    mCtx.save();
+    mCtx.globalCompositeOperation = "source-in";
+    mCtx.fillStyle = "#ffffff";
+    mCtx.fillRect(0, 0, W, H);
+    mCtx.restore();
   }
 
   const streak = c.createLinearGradient(0, 0, W, H);
@@ -729,7 +990,7 @@ async function renderCard(d, theme = "sky") {
   c.fillStyle = streak;
   c.fillRect(0, 0, W, H);
 
-  // 透かしの大きな蝶
+  // 透かしの大きな蝶 / Large watermark butterfly
   c.save();
   c.globalAlpha = 0.06;
   drawButterfly(c, W * 0.46, 330, 150, t.accent);
@@ -737,7 +998,7 @@ async function renderCard(d, theme = "sky") {
 
   c.restore(); // unclip
 
-  // ===== 枠線（二重）=====
+  // ===== Double border =====
   c.lineWidth = 5;
   c.strokeStyle = t.border;
   roundRect(c, 10, 10, W - 20, H - 20, 20);
@@ -749,7 +1010,7 @@ async function renderCard(d, theme = "sky") {
 
   const PAD = 70;
 
-  // ===== ヘッダー =====
+  // ===== Header =====
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
   c.fillStyle = "#11151c";
@@ -780,13 +1041,13 @@ async function renderCard(d, theme = "sky") {
 
   const rank = computeRank(d);
 
-  // ===== 写真 =====
-  // 正方形モード：枠を正方形にして元のポートレート枠(202..670)内で縦中央寄せ。
-  // アイコン(1:1)を左右切り取りなしで全体表示できる。
+  // ===== Photo =====
+  // 正方形モード：枠を正方形にして元のポートレート枠(202..670)内で縦中央寄せ。 / Square mode uses a square frame vertically centered within the original portrait bounds (202..670).
+  // アイコン(1:1)を左右切り取りなしで全体表示できる。 / This lets a 1:1 avatar fit fully without left/right cropping.
   const squareAvatar = !!$("square-avatar")?.checked;
   const phX = 850, phR = 16;
-  // 正方形時も幅は通常枠と同じ360に揃え、右カラム(LICENSE NO. 1250)との余白40pxを確保。
-  // 高さだけ短くなるので元のポートレート枠(202..670)内で縦中央寄せ。
+  // 正方形時も幅は通常枠と同じ360に揃え、右カラム(LICENSE NO. 1270)との余白60pxを確保。 / Keep the square mode width at the normal 360px and preserve a 60px gap before the right column (LICENSE NO. at 1270).
+  // 高さだけ短くなるので元のポートレート枠(202..670)内で縦中央寄せ。 / Only the height shrinks, so the frame stays vertically centered within the original portrait area.
   const phW = 360;
   const phH = squareAvatar ? 360 : 468;
   const phY = squareAvatar ? 202 + (468 - phH) / 2 : 202;
@@ -803,7 +1064,7 @@ async function renderCard(d, theme = "sky") {
   c.clip();
   if (d._avatar) {
     const img = d._avatar;
-    // 正方形モードは contain（全体表示）、通常はポートレート枠に cover（はみ出し切り取り）
+    // 正方形モードは contain（全体表示）、通常はポートレート枠に cover（はみ出し切り取り） / Square mode uses contain to show the whole image; portrait mode uses cover and crops overflow
     const ratio = squareAvatar
       ? Math.min(phW / img.width, phH / img.height)
       : Math.max(phW / img.width, phH / img.height);
@@ -826,7 +1087,7 @@ async function renderCard(d, theme = "sky") {
   roundRect(c, phX, phY, phW, phH, phR);
   c.stroke();
 
-  // ===== 左カラム：フィールド =====
+  // ===== Left column: fields =====
   const lx = PAD;
   const fieldMaxW = phX - 40 - lx;
   c.textAlign = "left";
@@ -834,37 +1095,16 @@ async function renderCard(d, theme = "sky") {
 
   drawPill(c, "NAME", lx, 208, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
   c.fillStyle = t.ink;
-  let np = 58; // 長い表示名は枠内に収まるまで縮小
+  let np = 58; // 長い表示名は枠内に収まるまで縮小 / Shrink long display names until they fit in the field
   while (np > 20) {
     c.font = `800 ${np}px 'Hiragino Sans','Yu Gothic',sans-serif`;
     if (c.measureText(d.name).width <= fieldMaxW) break;
     np -= 2;
   }
   c.fillText(d.name, lx, 292);
-  if (d.handle) {
-    c.fillStyle = t.accent;
-    let sp = 28; // 長いハンドルも縮小
-    while (sp > 14) {
-      c.font = `600 ${sp}px 'Hiragino Sans',sans-serif`;
-      if (c.measureText("@" + d.handle).width <= fieldMaxW) break;
-      sp -= 1;
-    }
-    c.fillText("@" + d.handle, lx, 348);
-  }
 
-  // DID
-  drawPill(c, "DID", lx, 386, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
-  c.fillStyle = t.ink;
-  let dp = 28;
-  while (dp > 13) {
-    c.font = `600 ${dp}px 'SF Mono','Menlo','Consolas',monospace`;
-    if (c.measureText(d.did).width <= fieldMaxW) break;
-    dp -= 1;
-  }
-  c.fillText(d.did, lx, 444);
-
-  // HANDLE（検証マーク付き）
-  drawPill(c, "HANDLE", lx, 496, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
+  // HANDLE（検証マーク付き） / Handle field with verification mark
+  drawPill(c, "HANDLE", lx, 354, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
   const handleText = d.handle ? "@" + d.handle : "—";
   let hp = 32;
   while (hp > 14) {
@@ -873,21 +1113,32 @@ async function renderCard(d, theme = "sky") {
     hp -= 1;
   }
   c.fillStyle = t.ink;
-  c.fillText(handleText, lx, 552);
+  c.fillText(handleText, lx, 420);
   if (d.handle && d.verified) {
     const aw = c.measureText(handleText).width;
     c.font = "700 28px 'Hiragino Sans',sans-serif";
     c.fillStyle = "#1c9e57";
-    c.fillText("✓", lx + aw + 12, 551);
+    c.fillText("✓", lx + aw + 12, 419);
   }
 
-  // 下段：ISSUED / CREATED / LICENSE CLASS（HANDLE との間に余白を確保）
-  // MILEAGE / PEAK はステータスパネル内のフッターに表示（下段の詰まりを回避）
+  // DID
+  drawPill(c, "DID", lx, 475, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
+  c.fillStyle = t.ink;
+  let dp = 28;
+  while (dp > 13) {
+    c.font = `600 ${dp}px 'SF Mono','Menlo','Consolas',monospace`;
+    if (c.measureText(d.did).width <= fieldMaxW) break;
+    dp -= 1;
+  }
+  c.fillText(d.did, lx, 541);
+
+  // 下段：ISSUED / CREATED / LICENSE CLASS（HANDLE との間に余白を確保） / Lower row: ISSUED / CREATED / LICENSE CLASS, with extra space preserved from HANDLE
+  // MILEAGE / PEAK はステータスパネル内のフッターに表示（下段の詰まりを回避） / Show MILEAGE and PEAK in the status-panel footer to avoid crowding this row
   const THREE_YEARS = 3 * 365.25 * 24 * 3600;
   const col = [lx, lx + 230, lx + 450];
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
-  const r1 = 596;
+  const r1 = 595;
   c.fillStyle = t.sub;
   c.font = "700 19px 'Hiragino Sans',sans-serif";
   c.fillText("ISSUED", col[0], r1);
@@ -898,10 +1149,9 @@ async function renderCard(d, theme = "sky") {
   c.fillText(fmtISO(Math.floor(Date.now() / 1000)), col[0], r1 + 30);
   c.fillText(d.createdAt ? fmtISO(d.createdAt) : "—", col[1], r1 + 30);
   drawPill(c, rank, col[2], r1 + 16, { bg: t.accent2, fg: "#fff", font: "700 21px 'Hiragino Sans',sans-serif", h: 34 });
-
-  // ===== 右カラム =====
-  const rlx = 1250;
-  const rcx = 1392;
+  // ===== Right column =====
+  const rlx = 1270;
+  const rcx = 1384;
   c.textAlign = "left";
   c.fillStyle = t.sub;
   c.font = "700 22px 'Hiragino Sans',sans-serif";
@@ -909,30 +1159,17 @@ async function renderCard(d, theme = "sky") {
   c.fillStyle = t.ink;
   c.font = "500 25px 'Hiragino Sans',sans-serif";
   c.fillText(licenseNo(d), rlx, 260);
-  c.fillStyle = t.sub;
-  c.font = "700 22px 'Hiragino Sans',sans-serif";
-  c.fillText("VALID THRU", rlx, 316);
-  c.fillStyle = t.ink;
-  c.font = "500 25px 'Hiragino Sans',sans-serif";
-  c.fillText(fmtISO(d.lastSeen + THREE_YEARS), rlx, 354);
-
-  drawShield(c, rcx, 442, 96, 116, t);
-  c.fillStyle = t.sub;
-  c.textAlign = "center";
-  c.font = "700 22px 'Hiragino Sans',sans-serif";
-  c.fillText("SELF-SOVEREIGN", rcx, 528);
-  c.fillText("IDENTITY", rcx, 554);
 
   if (d._qr) {
-    const qs = 150, qx = rcx - qs / 2, qy = 588;
+    const qs = 200, qx = rcx - qs / 2, qy = 470 - qs / 2;
     c.fillStyle = "#fff";
     roundRect(c, qx - 10, qy - 10, qs + 20, qs + 20, 14);
     c.fill();
     c.drawImage(d._qr, qx, qy, qs, qs);
-    drawHexLogo(c, qx + qs / 2, qy + qs / 2, 21, t.accent, t.accent2);
+    drawCircleLogo(c, qx + qs / 2, qy + qs / 2, 26, t.accent, t.accent2);
   }
 
-  // ===== ステータス・パネル =====
+  // ===== Status panel =====
   const pnX = 60, pnY = 690, pnW = 1000, pnH = 206;
   c.save();
   c.shadowColor = "rgba(80,60,20,0.18)";
@@ -990,7 +1227,7 @@ async function renderCard(d, theme = "sky") {
     drawStarRating(c, cxp + 296, cyp, s.n, 28, "#1e2a5a", "#b9c1d7");
   }
 
-  // パネル内フッター：MILEAGE / PEAK（区切り線つき）
+  // パネル内フッター：MILEAGE / PEAK（区切り線つき） / Panel footer: MILEAGE / PEAK with a divider line
   c.save();
   c.strokeStyle = t.gold2; c.globalAlpha = 0.4; c.lineWidth = 1;
   c.beginPath(); c.moveTo(pnX + 40, pnY + 172); c.lineTo(pnX + pnW - 40, pnY + 172); c.stroke();
@@ -1006,34 +1243,47 @@ async function renderCard(d, theme = "sky") {
   c.fillStyle = t.ink; c.font = "700 22px 'Hiragino Sans',sans-serif";
   c.fillText(d.peakUTC, colX[1] + 144, fy);
 
-  // ===== 署名・ホロ印 =====
-  c.fillStyle = "#1b2336";
-  c.textAlign = "center";
-  c.textBaseline = "alphabetic";
-  const sigText = d.handle || d.name || "";
-  const sigMaxW = 290; // ホロ印（左端~1438）に被らない範囲
-  let sigSize = 44;
-  while (sigSize > 18) {
-    c.font = `italic 600 ${sigSize}px 'Snell Roundhand','Apple Chancery','Brush Script MT',cursive`;
-    if (c.measureText(sigText).width <= sigMaxW) break;
-    sigSize -= 2;
-  }
-  c.fillText(sigText, 1285, 828);
-  c.fillStyle = t.sub;
-  c.font = "700 20px 'Hiragino Sans',sans-serif";
-  c.fillText("UNOFFICIAL FAN CARD", 1285, 866);
-  drawHoloSeal(c, 1486, 832, 48);
+  // ===== Seal and verification label (bottom right) =====
+  const shX = 1384, shY = 765, shW = 200, shH = 240;
+  drawShield(c, shX, shY, shW, shH, t);
 
-  // ===== 最下段：キャッチ =====
+  // Draw the shield into the offscreen holographic mask canvas and finalize the mask
+  mCtx.fillStyle = "#ffffff";
+  drawShieldPath(mCtx, shX, shY, shW, shH);
+  mCtx.fill();
+
+  mCtx.save();
+  mCtx.globalCompositeOperation = "destination-over";
+  mCtx.fillStyle = "#000000";
+  mCtx.fillRect(0, 0, W, H);
+  mCtx.restore();
+
+  // Initialize or update the Three.js 3D view
+  try {
+    const container = $("three-container");
+    container.style.display = "block";
+    await renderCardBack(d, theme);
+    if (!threeInitialized) {
+      initThree(container, canvas, maskCanvas, backCanvas);
+    } else {
+      cardTexture.needsUpdate = true;
+      maskTexture.needsUpdate = true;
+      backTexture.needsUpdate = true;
+    }
+  } catch (e) {
+    console.error("Three.js initialization/update error:", e);
+  }
+
+  // ===== Bottom tagline =====
   const capY = 936;
-  if (carFont) {
+  if (flightFont) {
     c.fillStyle = t.accent;
     c.textAlign = "left";
     c.textBaseline = "middle";
     c.font = '400 40px "Material Symbols Outlined"';
-    c.fillText("electric_car", PAD, capY);
+    c.fillText("flight", PAD, capY);
   } else {
-    drawCar(c, PAD, capY, t.accent);
+    drawAirplane(c, PAD, capY, t.accent);
   }
   c.fillStyle = "#2a3550";
   c.textAlign = "left";
@@ -1049,7 +1299,7 @@ async function renderCard(d, theme = "sky") {
   $("download-btn").disabled = false;
 }
 
-// ===== 発行フロー =====
+// ===== Issuance flow =====
 function normalizeActor(raw) {
   raw = raw.trim().replace(/^@/, "");
   if (raw.startsWith("http")) {
@@ -1073,7 +1323,7 @@ async function issueFor(actor) {
     lastData = data;
 
     await renderCard(data, $("theme-select").value);
-    setStatus(L().stDone(data), "ok");
+    setStatus("");
   } catch (err) {
     console.error(err);
     setStatus(L().err(err?.message || err), "error");
@@ -1095,7 +1345,7 @@ $("theme-select").addEventListener("change", () => {
   if (lastData) renderCard(lastData, $("theme-select").value);
 });
 
-// 初期プレースホルダ描画
+// 初期プレースホルダ描画 / Draw the initial placeholder
 function drawPlaceholder() {
   const t = THEMES.sky;
   const g = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
@@ -1117,7 +1367,7 @@ function drawPlaceholder() {
   ctx.fillText(L().canvasHint, canvas.width / 2, canvas.height / 2);
 }
 
-// ===== 言語：ブラウザ言語で自動表示＋手動切り替え =====
+// ===== Language: auto-detect from browser language, with manual override =====
 const savedLang = (() => { try { return localStorage.getItem("bsl_lang"); } catch { return null; } })() || "auto";
 $("lang-select").value = savedLang;
 $("lang-select").addEventListener("change", (e) => {
@@ -1126,7 +1376,7 @@ $("lang-select").addEventListener("change", (e) => {
 });
 applyLang(savedLang);
 
-// ===== アイコン正方形表示トグル =====
+// ===== Square-avatar toggle =====
 try {
   const sq = $("square-avatar");
   if (localStorage.getItem("bsl_square") === "1") sq.checked = true;
@@ -1147,3 +1397,172 @@ $("download-btn").addEventListener("click", () => {
     setStatus(L().errDownload(err.message), "error");
   }
 });
+
+async function initThree(container, cardCanvas, maskCanvas, backCanvas) {
+  if (threeInitialized) return;
+  threeInitialized = true;
+
+  const THREE = await import("three");
+  const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  scene = new THREE.Scene();
+  scene.background = null;
+
+  camera = new THREE.PerspectiveCamera(38, width / height, 0.1, 100);
+  camera.position.set(0, 0, 3.8);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  container.appendChild(renderer.domElement);
+
+  cardTexture = new THREE.CanvasTexture(cardCanvas);
+  cardTexture.minFilter = THREE.LinearFilter;
+  maskTexture = new THREE.CanvasTexture(maskCanvas);
+  maskTexture.minFilter = THREE.LinearFilter;
+  backTexture = new THREE.CanvasTexture(backCanvas);
+  backTexture.minFilter = THREE.LinearFilter;
+
+  const holoMaterial = new THREE.ShaderMaterial({
+    uniforms: {
+      tCard: { value: cardTexture },
+      tHoloMask: { value: maskTexture },
+      tBack: { value: backTexture },
+      uTime: { value: 0 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      varying float vObjectNormalZ;
+      void main() {
+        vObjectNormalZ = normal.z;
+        vUv = vec2(position.x / 2.39 + 0.5, position.y / 1.5 + 0.5);
+        vNormal = normalize(normalMatrix * normal);
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = wp.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tCard;
+      uniform sampler2D tHoloMask;
+      uniform sampler2D tBack;
+      uniform float uTime;
+      varying vec2 vUv;
+      varying vec3 vNormal;
+      varying vec3 vWorldPosition;
+      varying float vObjectNormalZ;
+
+      vec3 getRainbow(float x) {
+        vec3 c = vec3(0.0);
+        c.r = sin(x * 6.283 + 0.0) * 0.5 + 0.5;
+        c.g = sin(x * 6.283 + 2.094) * 0.5 + 0.5;
+        c.b = sin(x * 6.283 + 4.188) * 0.5 + 0.5;
+        return c;
+      }
+
+      void main() {
+        if (vObjectNormalZ < 0.0) {
+          vec2 backUv = vec2(1.0 - vUv.x, vUv.y);
+          vec4 backColor = texture2D(tBack, backUv);
+          if (backColor.a < 0.1) {
+            discard;
+          }
+          gl_FragColor = backColor;
+          return;
+        }
+
+        vec4 cardColor = texture2D(tCard, vUv);
+        if (cardColor.a < 0.1) {
+          discard;
+        }
+
+        float mask = texture2D(tHoloMask, vUv).r;
+
+        if (mask > 0.05) {
+          vec3 normal = normalize(vNormal);
+          float dotNL = dot(normal, vec3(0.0, 0.0, 1.0));
+          float shift = normal.x * 2.2 + normal.y * 2.2 + vWorldPosition.x * 0.3 + vWorldPosition.y * 0.3 + sin(uTime * 0.8) * 0.25;
+          vec3 holoColor = getRainbow(shift);
+          
+          vec3 spec = holoColor * 0.45 * mask * (0.15 + 0.85 * max(0.0, dotNL));
+          cardColor.rgb += spec;
+        }
+        gl_FragColor = cardColor;
+      }
+    `,
+    transparent: true
+  });
+
+  const plasticMat = new THREE.MeshBasicMaterial({ color: 0xeeeeee });
+
+  const materials = [
+    holoMaterial, // Front & Back caps
+    plasticMat    // Sides & Bevels
+  ];
+
+  const shape = new THREE.Shape();
+  const w = 2.37, h = 1.48, r = 0.035;
+  const x = -w / 2, y = -h / 2;
+  shape.moveTo(x, y + r);
+  shape.lineTo(x, y + h - r);
+  shape.quadraticCurveTo(x, y + h, x + r, y + h);
+  shape.lineTo(x + w - r, y + h);
+  shape.quadraticCurveTo(x + w, y + h, x + w, y + h - r);
+  shape.lineTo(x + w, y + r);
+  shape.quadraticCurveTo(x + w, y, x + w - r, y);
+  shape.lineTo(x + r, y);
+  shape.quadraticCurveTo(x, y, x, y + r);
+
+  const extrudeSettings = {
+    steps: 1,
+    depth: 0.01,
+    bevelEnabled: true,
+    bevelThickness: 0.01,
+    bevelSize: 0.01,
+    bevelSegments: 3
+  };
+
+  const geom = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+  geom.center();
+
+  cardMesh = new THREE.Mesh(geom, materials);
+  scene.add(cardMesh);
+
+  controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enableZoom = true;
+  controls.enablePan = false;
+  controls.minDistance = 1.5;
+  controls.maxDistance = 6.0;
+
+  const clock = new THREE.Clock();
+  function animate() {
+    animationFrameId = requestAnimationFrame(animate);
+    const time = clock.getElapsedTime();
+    holoMaterial.uniforms.uTime.value = time;
+    
+    cardMesh.rotation.y = Math.sin(time * 0.5) * 0.18;
+    cardMesh.rotation.x = Math.cos(time * 0.4) * 0.06;
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  const resizeObserver = new ResizeObserver(() => {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (w > 0 && h > 0) {
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+  });
+  resizeObserver.observe(container);
+}
