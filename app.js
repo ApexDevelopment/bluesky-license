@@ -26,6 +26,7 @@ const I18N = {
     tagline: "Turn your Bluesky identity into a driver's-license-style card.",
     ph: "Handle or DID (e.g. user.bsky.social)",
     issue: "Issue", design: "Design", language: "Language", lang_auto: "Auto",
+    avatarFit: "Square avatar (no cropping)",
     th_sky: "Bluesky (blue)", th_skyphoto: "Blue Sky photo", th_sunset: "Sunset", th_mint: "Mint", th_cyber: "Cyberpunk", th_gold: "Gold license",
     download: "Download PNG", about: "About / notes",
     a1: "Enter a Bluesky handle (e.g. <code>user.bsky.social</code> or a custom domain) or a DID, then press Issue.",
@@ -65,6 +66,7 @@ const I18N = {
     tagline: "あなたのBlueskyアイデンティティを運転免許証風カードにします。",
     ph: "ハンドル または DID（例: user.bsky.social）",
     issue: "発行", design: "デザイン", language: "言語", lang_auto: "自動",
+    avatarFit: "アイコンを正方形で表示（切り取りなし）",
     th_sky: "Bluesky（ブルー）", th_skyphoto: "青空写真", th_sunset: "サンセット", th_mint: "ミント", th_cyber: "サイバーパンク", th_gold: "ゴールド",
     download: "PNGをダウンロード", about: "このサービスについて / 注意",
     a1: "Blueskyのハンドル（例: <code>user.bsky.social</code> やカスタムドメイン）または DID を入力して「発行」を押してください。",
@@ -779,7 +781,13 @@ async function renderCard(d, theme = "sky") {
   const rank = computeRank(d);
 
   // ===== 写真 =====
-  const phX = 850, phY = 202, phW = 360, phH = 468, phR = 16;
+  // 正方形モード：枠を正方形にして元のポートレート枠(202..670)内で縦中央寄せ。
+  // アイコン(1:1)を左右切り取りなしで全体表示できる。
+  const squareAvatar = !!$("square-avatar")?.checked;
+  const phX = 850, phR = 16;
+  const phW = squareAvatar ? 392 : 360;
+  const phH = squareAvatar ? 392 : 468;
+  const phY = squareAvatar ? 202 + (468 - phH) / 2 : 202;
   c.save();
   c.shadowColor = "rgba(30,40,80,0.28)";
   c.shadowBlur = 26;
@@ -793,7 +801,10 @@ async function renderCard(d, theme = "sky") {
   c.clip();
   if (d._avatar) {
     const img = d._avatar;
-    const ratio = Math.max(phW / img.width, phH / img.height);
+    // 正方形モードは contain（全体表示）、通常はポートレート枠に cover（はみ出し切り取り）
+    const ratio = squareAvatar
+      ? Math.min(phW / img.width, phH / img.height)
+      : Math.max(phW / img.width, phH / img.height);
     const dw = img.width * ratio, dh = img.height * ratio;
     c.drawImage(img, phX + (phW - dw) / 2, phY + (phH - dh) / 2, dw, dh);
   } else {
@@ -1102,6 +1113,16 @@ $("lang-select").addEventListener("change", (e) => {
   applyLang(e.target.value);
 });
 applyLang(savedLang);
+
+// ===== アイコン正方形表示トグル =====
+try {
+  const sq = $("square-avatar");
+  if (localStorage.getItem("bsl_square") === "1") sq.checked = true;
+  sq.addEventListener("change", () => {
+    try { localStorage.setItem("bsl_square", sq.checked ? "1" : "0"); } catch {}
+    if (lastData) renderCard(lastData, $("theme-select").value);
+  });
+} catch {}
 
 $("download-btn").addEventListener("click", () => {
   try {
