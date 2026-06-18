@@ -120,3 +120,42 @@ dl.glossary dd {
   color: var(--text-dim);
   font-size: 12px;
 }
+
+/* Preview mode for OpenGraph screenshot */
+body.preview-mode {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+body.preview-mode .topbar,
+body.preview-mode .side,
+body.preview-mode .panel-title,
+body.preview-mode div[style*="justify-content: flex-end"],
+body.preview-mode #three-panel,
+body.preview-mode main > *:not(.previews) {
+  display: none !important;
+}
+body.preview-mode .frame,
+body.preview-mode .layout,
+body.preview-mode .main,
+body.preview-mode .previews,
+body.preview-mode .panel {
+  display: block !important;
+  width: 1568px !important;
+  height: 984px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+body.preview-mode #license-canvas {
+  display: block !important;
+  width: 1568px !important;
+  height: 984px !important;
+  max-width: none !important;
+  border: none !important;
+  border-radius: 0 !important;
+}
+

@@ -1645,3 +1645,19 @@ async function initThree(container, cardCanvas, maskCanvas, backCanvas) {
   });
   resizeObserver.observe(container);
 }
+
+// ===== OpenGraph Preview Mode =====
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has('preview')) {
+    document.body.classList.add('preview-mode');
+    window.addEventListener('load', async () => {
+      try {
+        await issueFor("apex.bsky.social");
+      } catch (e) {
+        console.error("Preview issue error:", e);
+      }
+    });
+  }
+} catch (e) {}
+
