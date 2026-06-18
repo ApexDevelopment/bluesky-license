@@ -12,24 +12,34 @@
 <body>
   <header class="site-header">
     <h1>🦋 Bluesky License</h1>
-    <p class="tagline">Turn your Bluesky identity into a driver's-license-style card.</p>
+    <p class="tagline" data-i18n="tagline">Turn your Bluesky identity into a driver's-license-style card.</p>
   </header>
 
   <main>
     <section class="controls">
       <div class="connect-row">
         <div class="manual">
-          <input id="npub-input" type="text" placeholder="Handle or DID (e.g. user.bsky.social)" autocomplete="off" />
-          <button id="manual-btn" class="btn btn-primary">Issue</button>
+          <input id="npub-input" type="text" data-i18n-ph="ph" placeholder="Handle or DID (e.g. user.bsky.social)" autocomplete="off" />
+          <button id="manual-btn" class="btn btn-primary" data-i18n="issue">Issue</button>
         </div>
       </div>
 
       <div class="options">
-        <label>Design
+        <label><span data-i18n="design">Design</span>
           <select id="theme-select">
-            <option value="sky">Bluesky (blue)</option>
-            <option value="cyber">Cyberpunk</option>
-            <option value="gold">Gold license</option>
+            <option value="sky" data-i18n="th_sky">Bluesky (blue)</option>
+            <option value="skyphoto" data-i18n="th_skyphoto">Blue Sky photo</option>
+            <option value="sunset" data-i18n="th_sunset">Sunset</option>
+            <option value="mint" data-i18n="th_mint">Mint</option>
+            <option value="cyber" data-i18n="th_cyber">Cyberpunk</option>
+            <option value="gold" data-i18n="th_gold">Gold license</option>
+          </select>
+        </label>
+        <label><span data-i18n="language">Language</span>
+          <select id="lang-select">
+            <option value="auto" data-i18n="lang_auto">Auto</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
           </select>
         </label>
       </div>
@@ -40,22 +50,27 @@
     <section class="preview">
       <canvas id="license-canvas" width="1568" height="984"></canvas>
       <div class="actions">
-        <button id="download-btn" class="btn btn-primary" disabled>Download PNG</button>
+        <button id="download-btn" class="btn btn-primary" disabled data-i18n="download">Download PNG</button>
       </div>
     </section>
 
     <details class="info">
-      <summary>About / notes</summary>
+      <summary data-i18n="about">About / notes</summary>
       <ul>
-        <li>Enter a Bluesky <strong>handle</strong> (e.g. <code>user.bsky.social</code> or a custom domain) or a <strong>DID</strong>, then press Issue.</li>
-        <li>Reads public data from the AT Protocol AppView (<code>public.api.bsky.app</code>): display name, avatar, posts / followers / following counts, account creation date, and recent-post engagement. No login required.</li>
-        <li>HANDLE shows a green ✓ when the account is verified (custom-domain handle, or a Bluesky trusted-verifier / verified status).</li>
-        <li>This is a fan card for fun, not an official ID.</li>
-        <li>If an avatar host doesn't allow CORS, the avatar may fall back to a placeholder in the downloaded image.</li>
+        <li data-i18n="a1">Enter a Bluesky handle (e.g. <code>user.bsky.social</code> or a custom domain) or a DID, then press Issue.</li>
+        <li data-i18n="a2">Reads public AT Protocol data: profile, plus your posts / likes / follows (up to the most recent 1000) and the follower graph. No login required.</li>
+        <li data-i18n="a3">Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran — plus Mileage and peak posting hours (UTC).</li>
+        <li data-i18n="a4">HANDLE shows a green ✓ when the account is verified (custom-domain handle, or Bluesky verified / trusted-verifier status).</li>
+        <li data-i18n="a5">This is an <strong>unofficial fan card</strong> for fun — not affiliated with Bluesky, and not an official ID.</li>
       </ul>
+    </details>
+
+    <details class="info">
+      <summary data-i18n="glossary">Card terms</summary>
+      <div data-i18n="glossaryHtml"></div>
     </details>
   </main>
 
-  <script type="module" src="app.js?v=1"></script>
+  <script type="module" src="app.js?v=3"></script>
 </body>
 </html>

@@ -164,6 +164,21 @@ main {
   color: var(--muted);
   font-size: 13px;
 }
+.info { margin: 18px auto 0; }
+.info:last-of-type { margin-bottom: 60px; }
 .info summary { cursor: pointer; color: var(--text); }
 .info code { background: var(--panel-2); padding: 1px 6px; border-radius: 5px; }
 .info ul { line-height: 1.7; }
+
+dl.glossary { margin: 10px 0 2px; }
+dl.glossary dt {
+  color: var(--text);
+  font-weight: 700;
+  margin-top: 12px;
+}
+dl.glossary dd {
+  margin: 2px 0 0;
+  padding-left: 14px;
+  line-height: 1.6;
+  border-left: 2px solid var(--border);
+}

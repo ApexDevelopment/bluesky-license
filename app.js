@@ -13,28 +13,273 @@ function setStatus(msg, kind = "") {
   el.className = "status" + (kind ? " " + kind : "");
 }
 
-// ===== データ取得（Bluesky 公開API。CORS許可済み・認証不要）=====
-async function fetchProfile(actor) {
-  setStatus("Fetching Bluesky profile…");
-  const p = await fetch(`${API}/app.bsky.actor.getProfile?actor=${encodeURIComponent(actor)}`)
-    .then((r) => { if (!r.ok) throw new Error("Profile not found"); return r.json(); });
+// ===== i18n（フロントUIのみ。カード本体は英語固定）=====
+let LANG = "en";
+const L = () => I18N[LANG] || I18N.en;
+const doneSummary = (d, words) => {
+  const plus = (v, c) => v + (c ? "+" : "");
+  const gen = d.pdsOk ? plus(d.likesGiven, d.likesCapped) : "—";
+  return `${words.done}: ${d.name} | ${words.mileage} ${d.posts} / WoT ${plus(d.wot, d.wotCapped)} / ${words.engagement} ${plus(d.engagement, d.postsCapped)} / ${words.generosity} ${gen} / ${words.velocity} ${d.velocity.toFixed(1)}/d / ${words.streak} ${d.streak}d / ${words.peak} ${d.peakUTC}${d.verified ? " / verified ✓" : ""}`;
+};
+const I18N = {
+  en: {
+    tagline: "Turn your Bluesky identity into a driver's-license-style card.",
+    ph: "Handle or DID (e.g. user.bsky.social)",
+    issue: "Issue", design: "Design", language: "Language", lang_auto: "Auto",
+    th_sky: "Bluesky (blue)", th_skyphoto: "Blue Sky photo", th_sunset: "Sunset", th_mint: "Mint", th_cyber: "Cyberpunk", th_gold: "Gold license",
+    download: "Download PNG", about: "About / notes",
+    a1: "Enter a Bluesky handle (e.g. <code>user.bsky.social</code> or a custom domain) or a DID, then press Issue.",
+    a2: "Reads public AT Protocol data: profile, plus your posts / likes / follows (up to the most recent 1000) and the follower graph. No login required.",
+    a3: "Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran — plus Mileage and peak posting hours (UTC).",
+    a4: "HANDLE shows a green ✓ when the account is verified (custom-domain handle, or Bluesky verified / trusted-verifier status).",
+    a5: "This is an <strong>unofficial fan card</strong> for fun — not affiliated with Bluesky, and not an official ID.",
+    glossary: "Card terms",
+    glossaryHtml: `<dl class="glossary">
+      <dt>Web of Trust</dt><dd>Mutual follows — people you follow who also follow you back.</dd>
+      <dt>Engagement</dt><dd>Total likes + reposts + replies your recent posts received.</dd>
+      <dt>Generosity</dt><dd>Total likes you've given to others.</dd>
+      <dt>Velocity</dt><dd>Posts per day (total posts ÷ account age).</dd>
+      <dt>Streak</dt><dd>Your longest run of consecutive days with at least one post.</dd>
+      <dt>Veteran</dt><dd>How long your account has existed.</dd>
+      <dt>Mileage</dt><dd>Your total number of posts — like an odometer.</dd>
+      <dt>Peak (UTC)</dt><dd>The 2-hour window, in UTC, when you post the most.</dd>
+      <dt>DID</dt><dd>Your decentralized identifier (<code>did:plc:…</code>) — the permanent ID behind your handle.</dd>
+      <dt>Handle ✓</dt><dd>Your @handle. A green ✓ means verified: a custom-domain handle, or Bluesky verified / trusted-verifier status.</dd>
+      <dt>License Class</dt><dd>A rank from your stats: Newcomer → Explorer → Citizen → Veteran.</dd>
+      <dt>Valid Thru</dt><dd>A playful "expiry": last activity + 3 years.</dd>
+      <dt>Sampling</dt><dd>Analysis covers up to your most recent ~1000 posts/likes and up to 2500 follows (for mutuals). Bigger accounts show "+".</dd>
+    </dl>`,
+    canvasHint: "Enter a handle or DID and press Issue",
+    stProfile: "Fetching Bluesky profile…",
+    stPosts: (n, m) => `Analyzing posts… ${n}/${m}`,
+    stWoT: (n, m) => `Computing Web of Trust… ${n}/${m}`,
+    stLikes: "Counting likes given…",
+    stAvatar: "Generating avatar / QR…",
+    stDone: (d) => doneSummary(d, { done: "Done", mileage: "mileage", engagement: "engagement", generosity: "generosity", velocity: "velocity", streak: "streak", peak: "peak" }),
+    err: (m) => "Error: " + m,
+    errEnter: "Enter a handle or DID",
+    errNotFound: "Profile not found",
+    errDownload: (m) => "Download failed (possible avatar CORS restriction): " + m,
+  },
+  ja: {
+    tagline: "あなたのBlueskyアイデンティティを運転免許証風カードにします。",
+    ph: "ハンドル または DID（例: user.bsky.social）",
+    issue: "発行", design: "デザイン", language: "言語", lang_auto: "自動",
+    th_sky: "Bluesky（ブルー）", th_skyphoto: "青空写真", th_sunset: "サンセット", th_mint: "ミント", th_cyber: "サイバーパンク", th_gold: "ゴールド",
+    download: "PNGをダウンロード", about: "このサービスについて / 注意",
+    a1: "Blueskyのハンドル（例: <code>user.bsky.social</code> やカスタムドメイン）または DID を入力して「発行」を押してください。",
+    a2: "AT Protocol の公開データを読み込みます：プロフィールに加え、あなたの投稿／いいね／フォロー（直近最大1000件）とフォロワーグラフ。ログイン不要。",
+    a3: "指標：Web of Trust（相互フォロー）／ Engagement ／ Generosity（付けたいいね）／ Velocity ／ Streak ／ Veteran ＋ Mileage と最も投稿が多い時間帯（UTC）。",
+    a4: "アカウントが認証済み（カスタムドメインのハンドル、または Bluesky の verified / trusted-verifier）のとき、HANDLE に緑の ✓ が付きます。",
+    a5: "これは<strong>非公式のファンカード</strong>（遊び）です。Blueskyとは無関係で、公的な身分証ではありません。",
+    glossary: "カードの用語解説",
+    glossaryHtml: `<dl class="glossary">
+      <dt>Web of Trust</dt><dd>相互フォロー数。あなたがフォローしていて、相手もあなたをフォローし返している人数。</dd>
+      <dt>Engagement</dt><dd>直近の投稿が受け取った いいね＋リポスト＋返信 の合計。</dd>
+      <dt>Generosity</dt><dd>あなたが他の人に付けた いいね の総数。</dd>
+      <dt>Velocity</dt><dd>1日あたりの投稿数（総投稿 ÷ アカウント日数）。</dd>
+      <dt>Streak</dt><dd>1投稿以上した日が連続した最長日数。</dd>
+      <dt>Veteran</dt><dd>アカウントの利用期間（古さ）。</dd>
+      <dt>Mileage</dt><dd>総投稿数。オドメーター（走行距離）的な表示。</dd>
+      <dt>Peak (UTC)</dt><dd>最も投稿が多い2時間帯（UTC・協定世界時）。</dd>
+      <dt>DID</dt><dd>分散型ID（<code>did:plc:…</code>）。ハンドルの裏にある不変の識別子。</dd>
+      <dt>Handle ✓</dt><dd>あなたの @ハンドル。緑の ✓ は認証済み（カスタムドメインのハンドル、または Bluesky の verified / trusted-verifier）。</dd>
+      <dt>License Class</dt><dd>指標から決まるランク：Newcomer → Explorer → Citizen → Veteran。</dd>
+      <dt>Valid Thru</dt><dd>遊びの「有効期限」：最終アクティビティ＋3年。</dd>
+      <dt>Sampling（取得上限）</dt><dd>解析は直近およそ1000件の投稿/いいね、相互フォローは最大2500フォローまで。超過は「+」表示。</dd>
+    </dl>`,
+    canvasHint: "ハンドル または DID を入力して「発行」",
+    stProfile: "Blueskyプロフィールを取得中…",
+    stPosts: (n, m) => `投稿を解析中… ${n}/${m}`,
+    stWoT: (n, m) => `Web of Trust を計算中… ${n}/${m}`,
+    stLikes: "付けたいいねを集計中…",
+    stAvatar: "アバター / QR を生成中…",
+    stDone: (d) => doneSummary(d, { done: "完了", mileage: "投稿", engagement: "反応", generosity: "いいね魂", velocity: "速度", streak: "連続", peak: "ピーク" }),
+    err: (m) => "エラー: " + m,
+    errEnter: "ハンドル または DID を入力してください",
+    errNotFound: "プロフィールが見つかりません",
+    errDownload: (m) => "ダウンロード失敗（アバター画像のCORS制限の可能性）: " + m,
+  },
+};
+function detectLang() {
+  const n = (navigator.language || (navigator.languages && navigator.languages[0]) || "en").toLowerCase();
+  return n.startsWith("ja") ? "ja" : "en";
+}
+function applyLang(choice) {
+  LANG = choice === "auto" || !choice ? detectLang() : (I18N[choice] ? choice : "en");
+  document.documentElement.lang = LANG;
+  const dict = L();
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const v = dict[el.getAttribute("data-i18n")];
+    if (v != null) el.innerHTML = v;
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+    const v = dict[el.getAttribute("data-i18n-ph")];
+    if (v != null) el.placeholder = v;
+  });
+  if (!lastData) drawPlaceholder();
+}
 
-  // エンゲージメント：直近投稿の like + repost + reply を集計（Bluesky版の「反応」指標）
-  setStatus("Fetching recent posts for engagement…");
-  let engagement = 0, sampled = 0;
+const MAX_RECORDS = 1000; // 解析の取得上限（直近 N 件）
+const THROTTLE_MS = 80;   // API 連続呼び出しの間隔（公開APIに優しく）
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// DID から PDS エンドポイントを解決
+async function resolvePds(did) {
   try {
-    const feed = await fetch(`${API}/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(p.did)}&limit=100&filter=posts_no_replies`)
-      .then((r) => r.json());
-    for (const it of (feed.feed || [])) {
-      const post = it && it.post;
-      if (!post) continue;
-      sampled++;
-      engagement += (post.likeCount || 0) + (post.repostCount || 0) + (post.replyCount || 0);
+    if (did.startsWith("did:plc:")) {
+      const doc = await fetch(`https://plc.directory/${did}`).then((r) => r.json());
+      const svc = (doc.service || []).find((s) => (s.id || "").endsWith("atproto_pds"));
+      return svc ? svc.serviceEndpoint : null;
+    }
+    if (did.startsWith("did:web:")) {
+      const host = did.slice("did:web:".length).replace(/:/g, "/");
+      const doc = await fetch(`https://${host}/.well-known/did.json`).then((r) => r.json());
+      const svc = (doc.service || []).find((s) => (s.id || "").endsWith("atproto_pds"));
+      return svc ? svc.serviceEndpoint : null;
     }
   } catch {}
+  return null;
+}
+
+// PDS の listRecords でコレクションを最大 max 件まで数える（{ count, capped }）
+async function countRecords(pds, did, collection, max) {
+  let cursor = null, count = 0;
+  const pagesMax = Math.ceil(max / 100);
+  for (let page = 0; page < pagesMax; page++) {
+    const url = `${pds}/xrpc/com.atproto.repo.listRecords?repo=${encodeURIComponent(did)}&collection=${collection}&limit=100` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    let j;
+    try { j = await fetch(url).then((r) => { if (!r.ok) throw 0; return r.json(); }); } catch { break; }
+    const recs = j.records || [];
+    count += recs.length;
+    cursor = j.cursor;
+    if (!cursor || recs.length === 0) return { count, capped: false };
+    await sleep(THROTTLE_MS);
+  }
+  return { count, capped: true };
+}
+
+// 自分の投稿（リポスト除外）を最大 max 件取得 → タイムスタンプとエンゲージメント
+async function fetchAuthorPosts(did, max) {
+  let cursor = null;
+  const posts = [];
+  const pagesMax = Math.ceil(max / 100);
+  for (let page = 0; page < pagesMax; page++) {
+    setStatus(L().stPosts(posts.length, max));
+    const url = `${API}/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(did)}&limit=100&filter=posts_with_replies` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    let j;
+    try { j = await fetch(url).then((r) => r.json()); } catch { break; }
+    for (const it of (j.feed || [])) {
+      if (it.reason) continue; // リポストは除外
+      const p = it.post;
+      if (!p || !p.author || p.author.did !== did) continue;
+      const ts = Date.parse((p.record && p.record.createdAt) || p.indexedAt);
+      if (!isFinite(ts)) continue;
+      posts.push({ ts: Math.floor(ts / 1000), eng: (p.likeCount || 0) + (p.repostCount || 0) + (p.replyCount || 0) });
+      if (posts.length >= max) return posts;
+    }
+    cursor = j.cursor;
+    if (!cursor) break;
+    await sleep(THROTTLE_MS);
+  }
+  return posts;
+}
+
+// フォロー/フォロワーの DID 配列を取得（最大 max 件）
+async function fetchGraphList(method, did, max) {
+  let cursor = null;
+  const out = [];
+  const key = method === "getFollows" ? "follows" : "followers";
+  const pagesMax = Math.ceil(max / 100);
+  for (let page = 0; page < pagesMax; page++) {
+    const url = `${API}/app.bsky.graph.${method}?actor=${encodeURIComponent(did)}&limit=100` + (cursor ? `&cursor=${encodeURIComponent(cursor)}` : "");
+    let j;
+    try { j = await fetch(url).then((r) => r.json()); } catch { break; }
+    for (const a of (j[key] || [])) { out.push(a.did); if (out.length >= max) return out; }
+    cursor = j.cursor;
+    if (!cursor) break;
+    await sleep(THROTTLE_MS);
+  }
+  return out;
+}
+
+// WoT＝相互フォロー数。小さい側（通常はフォロー数）を全取得し getRelationships で相互判定。
+// → フォロワー数百万の巨大アカウントでも、フォロー数が常識的なら正確に出せる。
+const WOT_CAP = 2500;
+async function computeWoT(did, followsCount, followersCount) {
+  const useFollows = (followsCount || 0) <= (followersCount || 0);
+  const method = useFollows ? "getFollows" : "getFollowers";
+  const list = await fetchGraphList(method, did, WOT_CAP);
+  let mutual = 0;
+  for (let i = 0; i < list.length; i += 30) {
+    setStatus(L().stWoT(Math.min(i + 30, list.length), list.length));
+    const batch = list.slice(i, i + 30);
+    const qs = batch.map((d) => "others=" + encodeURIComponent(d)).join("&");
+    let j;
+    try { j = await fetch(`${API}/app.bsky.graph.getRelationships?actor=${encodeURIComponent(did)}&${qs}`).then((r) => r.json()); } catch { continue; }
+    for (const rel of (j.relationships || [])) {
+      if (useFollows ? rel.followedBy : rel.following) mutual++;
+    }
+    await sleep(THROTTLE_MS);
+  }
+  return { wot: mutual, capped: list.length >= WOT_CAP };
+}
+
+// 最長連続投稿日数（UTC日付ベース）
+function longestStreak(timestamps) {
+  const days = [...new Set(timestamps.map((t) => Math.floor(t / 86400)))].sort((a, b) => a - b);
+  if (!days.length) return 0;
+  let best = 1, cur = 1;
+  for (let i = 1; i < days.length; i++) {
+    if (days[i] === days[i - 1] + 1) { cur++; best = Math.max(best, cur); } else { cur = 1; }
+  }
+  return best;
+}
+// 最も投稿が多い2時間帯（UTC）
+function peakBand(timestamps) {
+  if (!timestamps.length) return "—";
+  const h = new Array(24).fill(0);
+  for (const t of timestamps) h[new Date(t * 1000).getUTCHours()]++;
+  let bi = 0, bv = -1;
+  for (let i = 0; i < 24; i++) { const v = h[i] + h[(i + 1) % 24]; if (v > bv) { bv = v; bi = i; } }
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(bi)}–${p((bi + 2) % 24)} UTC`;
+}
+
+// ===== データ取得＋解析 =====
+async function fetchProfile(actor) {
+  setStatus(L().stProfile);
+  const p = await fetch(`${API}/app.bsky.actor.getProfile?actor=${encodeURIComponent(actor)}`)
+    .then((r) => { if (!r.ok) throw new Error(L().errNotFound); return r.json(); });
+  const did = p.did;
 
   const createdAt = p.createdAt ? Math.floor(Date.parse(p.createdAt) / 1000) : null;
   const lastSeen = p.indexedAt ? Math.floor(Date.parse(p.indexedAt) / 1000) : null;
+  const posts = p.postsCount || 0;
+  const ageDays = createdAt ? Math.max(1, (Date.now() / 1000 - createdAt) / 86400) : 1;
+
+  // 投稿解析（エンゲージメント・連続日数・ピーク時間帯）
+  const postRecs = await fetchAuthorPosts(did, MAX_RECORDS);
+  const engagement = postRecs.reduce((a, r) => a + r.eng, 0);
+  const streak = longestStreak(postRecs.map((r) => r.ts));
+  const peakUTC = peakBand(postRecs.map((r) => r.ts));
+  const postsCapped = postRecs.length >= MAX_RECORDS;
+
+  // WoT（相互フォロー）— 小さい側を全取得して getRelationships で相互判定
+  setStatus(L().stWoT(0, "…"));
+  const wotRes = await computeWoT(did, p.followsCount, p.followersCount);
+  const wot = wotRes.wot;
+  const wotCapped = wotRes.capped;
+
+  // Generosity（付けたいいね総数）— repo を直接参照
+  setStatus(L().stLikes);
+  let likesGiven = 0, likesCapped = false;
+  const pds = await resolvePds(did);
+  if (pds) {
+    const r = await countRecords(pds, did, "app.bsky.feed.like", MAX_RECORDS);
+    likesGiven = r.count;
+    likesCapped = r.capped;
+  }
 
   // 検証：カスタムドメイン handle（= ドメイン認証）または trusted verifier / verified
   const v = p.verification || {};
@@ -42,16 +287,17 @@ async function fetchProfile(actor) {
   const verified = customDomain || v.verifiedStatus === "valid" || v.trustedVerifierStatus === "valid";
 
   return {
-    did: p.did,
+    did,
     handle: p.handle || "",
     name: p.displayName || p.handle || "NO NAME",
     picture: p.avatar || "",
-    description: p.description || "",
-    followers: p.followersCount || 0,
-    follows: p.followsCount || 0,
-    posts: p.postsCount || 0,
-    engagement,
-    engagementSampled: sampled,
+    posts,                          // Mileage（オドメーター）
+    velocity: posts / ageDays,      // 1日あたり投稿数
+    engagement, postsCapped,
+    streak,
+    peakUTC,
+    wot, wotCapped,
+    likesGiven, likesCapped, pdsOk: !!pds,
     createdAt,
     lastSeen: lastSeen || createdAt || Math.floor(Date.now() / 1000),
     verified,
@@ -61,9 +307,9 @@ async function fetchProfile(actor) {
 // ===== ランク（実データ基準）=====
 function computeRank(d) {
   const ageY = d.createdAt ? (Date.now() / 1000 - d.createdAt) / (365.25 * 24 * 3600) : 0;
-  if (d.followers >= 10000 || ageY >= 3) return "BLUESKY VETERAN";
-  if (d.followers >= 1000 || d.posts >= 1000) return "BLUESKY CITIZEN";
-  if (d.posts >= 50 || d.followers >= 100) return "BLUESKY EXPLORER";
+  if (d.wot >= 300 || ageY >= 3) return "BLUESKY VETERAN";
+  if (d.wot >= 50 || d.posts >= 1000) return "BLUESKY CITIZEN";
+  if (d.posts >= 50 || d.engagement >= 100) return "BLUESKY EXPLORER";
   return "BLUESKY NEWCOMER";
 }
 
@@ -72,15 +318,17 @@ function starFrom(x, k, base = 1) {
   const n = Math.round(Math.log10((x || 0) + 1) * k) + base;
   return Math.max(1, Math.min(5, n));
 }
-// ステータス（5項目・すべて実データ）。2列グリッドで表示。各 {label, n, icon}
+// ステータス（6項目・すべて実データ）。2×3グリッドで表示。各 {label, n, icon}
 function computeStars(d) {
   const ageY = d.createdAt ? (Date.now() / 1000 - d.createdAt) / (365.25 * 24 * 3600) : 0;
   return [
-    { label: "Communication", icon: "bubble", n: starFrom(d.posts, 1.4) },
-    { label: "Followers", icon: "shield", n: starFrom(d.followers, 1.1) },
-    { label: "Following", icon: "person", n: starFrom(d.follows, 1.4) },
+    { label: "Web of Trust", icon: "shield", n: starFrom(d.wot, 1.4) },
     { label: "Engagement", icon: "bolt", n: starFrom(d.engagement, 1.2) },
-    { label: "Veteran", icon: "relay", n: Math.max(1, Math.min(5, Math.round(ageY) + 1)) },
+    { label: "Generosity", icon: "person", n: starFrom(d.likesGiven, 1.2) },
+    { label: "Velocity", icon: "relay", n: starFrom(d.velocity, 2.5) },
+    { label: "Streak", icon: "bubble", n: starFrom(d.streak, 2.2) },
+    // Veteran：Bluesky は最長でも ~3.4 年なので、3年以上＝星5になるよう調整
+    { label: "Veteran", icon: "relay", n: ageY >= 3 ? 5 : ageY >= 2 ? 4 : ageY >= 1 ? 3 : ageY >= 0.25 ? 2 : 1 },
   ];
 }
 
@@ -102,6 +350,16 @@ async function loadAvatar(url) {
     return await loadImage(proxied);
   } catch {}
   return null;
+}
+
+// 背景写真（同一オリジンのアセット）をキャッシュ付きでロード
+const _bgCache = {};
+async function getBgPhoto(src) {
+  if (!src) return null;
+  if (src in _bgCache) return _bgCache[src];
+  try { _bgCache[src] = await loadImage(src, { crossOrigin: false }); }
+  catch { _bgCache[src] = null; }
+  return _bgCache[src];
 }
 
 // ===== QRコード生成（bsky.app プロフィールへのリンク）=====
@@ -351,9 +609,13 @@ function drawCar(c, x, cy, color) {
 }
 
 const THEMES = {
-  sky:   { accent: "#1185fe", accent2: "#0a63d6", ink: "#10243f", sub: "#3a5680", line: "#9fc0ef", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eef5ff", "#eef1fc", "#f2f6ff"] },
-  cyber: { accent: "#0a9fc0", accent2: "#d6249f", ink: "#142539", sub: "#3a5066", line: "#9bd3e2", border: "#0a9fc0", gold1: "#bcae72", gold2: "#8c7a38", paper: ["#eafaff", "#eef0fb", "#fde8f6"] },
-  gold:  { accent: "#b4863a", accent2: "#9a6b1e", ink: "#2a2206", sub: "#5a4d22", line: "#dcc79a", border: "#b4863a", gold1: "#e6cd84", gold2: "#b4863a", paper: ["#fffaf0", "#fff4e2", "#fdeed6"] },
+  sky:      { accent: "#1185fe", accent2: "#0a63d6", ink: "#10243f", sub: "#3a5680", line: "#9fc0ef", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eef5ff", "#eef1fc", "#f2f6ff"] },
+  // 青空写真モード（ユーザー撮影の写真を薄く敷く）
+  skyphoto: { accent: "#0a63d6", accent2: "#0a4fb0", ink: "#0e244f", sub: "#33507e", line: "#bcd6f5", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#f4f9ff", "#eef5ff", "#f6fbff"], photo: "bg/sky1.jpg", photoAlpha: 0.34 },
+  sunset:   { accent: "#e2603a", accent2: "#c23b6a", ink: "#3a1f24", sub: "#7a4a52", line: "#f0b9a0", border: "#e2603a", gold1: "#e8c074", gold2: "#c98a3a", paper: ["#fff3ec", "#ffeef0", "#fff0e6"] },
+  mint:     { accent: "#10a37f", accent2: "#0a7d8c", ink: "#0e2a26", sub: "#3a6a60", line: "#a8e0d0", border: "#10a37f", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eefbf6", "#eef6f4", "#f2fbf8"] },
+  cyber:    { accent: "#0a9fc0", accent2: "#d6249f", ink: "#142539", sub: "#3a5066", line: "#9bd3e2", border: "#0a9fc0", gold1: "#bcae72", gold2: "#8c7a38", paper: ["#eafaff", "#eef0fb", "#fde8f6"] },
+  gold:     { accent: "#b4863a", accent2: "#9a6b1e", ink: "#2a2206", sub: "#5a4d22", line: "#dcc79a", border: "#b4863a", gold1: "#e6cd84", gold2: "#b4863a", paper: ["#fffaf0", "#fff4e2", "#fdeed6"] },
 };
 
 // ===== カード描画（高級ホログラム調 / 英語表記）=====
@@ -383,6 +645,19 @@ async function renderCard(d, theme = "sky") {
   c.save();
   roundRect(c, 0, 0, W, H, 24);
   c.clip();
+
+  // 背景写真（テーマに photo があれば、cover で薄く敷く）
+  if (t.photo) {
+    const ph = await getBgPhoto(t.photo);
+    if (ph) {
+      c.save();
+      c.globalAlpha = t.photoAlpha != null ? t.photoAlpha : 0.25;
+      const ratio = Math.max(W / ph.width, H / ph.height);
+      const dw = ph.width * ratio, dh = ph.height * ratio;
+      c.drawImage(ph, (W - dw) / 2, (H - dh) / 2, dw, dh);
+      c.restore();
+    }
+  }
 
   const sheen = c.createLinearGradient(0, H, W, 0);
   sheen.addColorStop(0.0, "rgba(120,180,255,0.10)");
@@ -583,20 +858,23 @@ async function renderCard(d, theme = "sky") {
     c.fillText("✓", lx + aw + 12, 551);
   }
 
-  // 下段3カラム（ISSUED / CREATED / LICENSE CLASS）
+  // 下段：ISSUED / CREATED / LICENSE CLASS（HANDLE との間に余白を確保）
+  // MILEAGE / PEAK はステータスパネル内のフッターに表示（下段の詰まりを回避）
   const THREE_YEARS = 3 * 365.25 * 24 * 3600;
-  const rowY = 614;
   const col = [lx, lx + 230, lx + 450];
+  c.textAlign = "left";
+  c.textBaseline = "alphabetic";
+  const r1 = 596;
   c.fillStyle = t.sub;
   c.font = "700 19px 'Hiragino Sans',sans-serif";
-  c.fillText("ISSUED", col[0], rowY);
-  c.fillText("CREATED", col[1], rowY);
-  c.fillText("LICENSE CLASS", col[2], rowY);
+  c.fillText("ISSUED", col[0], r1);
+  c.fillText("CREATED", col[1], r1);
+  c.fillText("LICENSE CLASS", col[2], r1);
   c.fillStyle = t.ink;
   c.font = "400 25px 'Hiragino Sans',sans-serif";
-  c.fillText(fmtISO(Math.floor(Date.now() / 1000)), col[0], rowY + 32);
-  c.fillText(d.createdAt ? fmtISO(d.createdAt) : "—", col[1], rowY + 32);
-  drawPill(c, rank, col[2], rowY + 20, { bg: t.accent2, fg: "#fff", font: "700 21px 'Hiragino Sans',sans-serif", h: 34 });
+  c.fillText(fmtISO(Math.floor(Date.now() / 1000)), col[0], r1 + 30);
+  c.fillText(d.createdAt ? fmtISO(d.createdAt) : "—", col[1], r1 + 30);
+  drawPill(c, rank, col[2], r1 + 16, { bg: t.accent2, fg: "#fff", font: "700 21px 'Hiragino Sans',sans-serif", h: 34 });
 
   // ===== 右カラム =====
   const rlx = 1250;
@@ -632,7 +910,7 @@ async function renderCard(d, theme = "sky") {
   }
 
   // ===== ステータス・パネル =====
-  const pnX = 60, pnY = 712, pnW = 1000, pnH = 182;
+  const pnX = 60, pnY = 690, pnW = 1000, pnH = 206;
   c.save();
   c.shadowColor = "rgba(80,60,20,0.18)";
   c.shadowBlur = 16;
@@ -675,7 +953,7 @@ async function renderCard(d, theme = "sky") {
 
   const stats = computeStars(d);
   const colX = [pnX + 40, pnX + 510];
-  const rowsY = [pnY + 56, pnY + 106, pnY + 156];
+  const rowsY = [pnY + 54, pnY + 100, pnY + 146];
   for (let i = 0; i < stats.length; i++) {
     const s = stats[i];
     const cxp = colX[i % 2];
@@ -689,6 +967,22 @@ async function renderCard(d, theme = "sky") {
     drawStarRating(c, cxp + 296, cyp, s.n, 28, "#1e2a5a", "#b9c1d7");
   }
 
+  // パネル内フッター：MILEAGE / PEAK（区切り線つき）
+  c.save();
+  c.strokeStyle = t.gold2; c.globalAlpha = 0.4; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(pnX + 40, pnY + 172); c.lineTo(pnX + pnW - 40, pnY + 172); c.stroke();
+  c.restore();
+  const fy = pnY + 194;
+  c.textAlign = "left"; c.textBaseline = "alphabetic";
+  c.fillStyle = t.sub; c.font = "700 18px 'Hiragino Sans',sans-serif";
+  c.fillText("MILEAGE", colX[0], fy);
+  c.fillStyle = t.ink; c.font = "700 22px 'SF Mono','Menlo','Consolas',monospace";
+  c.fillText(d.posts.toLocaleString("en-US"), colX[0] + 104, fy);
+  c.fillStyle = t.sub; c.font = "700 18px 'Hiragino Sans',sans-serif";
+  c.fillText("PEAK (UTC)", colX[1], fy);
+  c.fillStyle = t.ink; c.font = "700 22px 'Hiragino Sans',sans-serif";
+  c.fillText(d.peakUTC, colX[1] + 144, fy);
+
   // ===== 署名・ホロ印 =====
   c.fillStyle = "#1b2336";
   c.textAlign = "center";
@@ -697,7 +991,7 @@ async function renderCard(d, theme = "sky") {
   c.fillText(d.handle || d.name, 1285, 828);
   c.fillStyle = t.sub;
   c.font = "700 20px 'Hiragino Sans',sans-serif";
-  c.fillText("AUTHORIZED BY BLUESKY", 1285, 866);
+  c.fillText("UNOFFICIAL FAN CARD", 1285, 866);
   drawHoloSeal(c, 1486, 832, 48);
 
   // ===== 最下段：キャッチ =====
@@ -732,14 +1026,14 @@ function normalizeActor(raw) {
     const m = raw.match(/\/profile\/([^/?#]+)/);
     if (m) raw = m[1];
   }
-  if (!raw) throw new Error("Enter a handle or DID");
+  if (!raw) throw new Error(L().errEnter);
   return raw;
 }
 
 async function issueFor(actor) {
   try {
     const data = await fetchProfile(actor);
-    setStatus("Generating avatar / QR…");
+    setStatus(L().stAvatar);
     const [avatar, qr] = await Promise.all([
       loadAvatar(data.picture),
       makeQR("https://bsky.app/profile/" + (data.handle || data.did)),
@@ -749,23 +1043,20 @@ async function issueFor(actor) {
     lastData = data;
 
     await renderCard(data, $("theme-select").value);
-    setStatus(
-      `Done: ${data.name} | posts ${data.posts} / followers ${data.followers} / following ${data.follows} / engagement ${data.engagement}${data.verified ? " / verified ✓" : ""}`,
-      "ok"
-    );
+    setStatus(L().stDone(data), "ok");
   } catch (err) {
     console.error(err);
-    setStatus("Error: " + (err?.message || err), "error");
+    setStatus(L().err(err?.message || err), "error");
   }
 }
 
 $("manual-btn").addEventListener("click", async () => {
   const raw = $("npub-input").value;
-  if (!raw.trim()) { setStatus("Enter a handle or DID", "error"); return; }
+  if (!raw.trim()) { setStatus(L().errEnter, "error"); return; }
   try {
     await issueFor(normalizeActor(raw));
   } catch (err) {
-    setStatus("Error: " + (err?.message || err), "error");
+    setStatus(L().err(err?.message || err), "error");
   }
 });
 $("npub-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("manual-btn").click(); });
@@ -775,7 +1066,7 @@ $("theme-select").addEventListener("change", () => {
 });
 
 // 初期プレースホルダ描画
-(function initPlaceholder() {
+function drawPlaceholder() {
   const t = THEMES.sky;
   const g = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
   g.addColorStop(0, t.paper[0]);
@@ -793,8 +1084,17 @@ $("theme-select").addEventListener("change", () => {
   ctx.font = "700 30px 'Hiragino Sans','Noto Sans JP',sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Enter a handle or DID and press Issue", canvas.width / 2, canvas.height / 2);
-})();
+  ctx.fillText(L().canvasHint, canvas.width / 2, canvas.height / 2);
+}
+
+// ===== 言語：ブラウザ言語で自動表示＋手動切り替え =====
+const savedLang = (() => { try { return localStorage.getItem("bsl_lang"); } catch { return null; } })() || "auto";
+$("lang-select").value = savedLang;
+$("lang-select").addEventListener("change", (e) => {
+  try { localStorage.setItem("bsl_lang", e.target.value); } catch {}
+  applyLang(e.target.value);
+});
+applyLang(savedLang);
 
 $("download-btn").addEventListener("click", () => {
   try {
@@ -804,6 +1104,6 @@ $("download-btn").addEventListener("click", () => {
     a.download = "bluesky-license.png";
     a.click();
   } catch (err) {
-    setStatus("Download failed (possible avatar CORS restriction): " + err.message, "error");
+    setStatus(L().errDownload(err.message), "error");
   }
 });
