@@ -70,6 +70,7 @@ const I18N = {
     errEnter: "Enter a handle or DID",
     errNotFound: "Profile not found",
     errDownload: (m) => "Download failed (possible avatar CORS restriction): " + m,
+    errCompatibility: (m) => `${m} is restricted. If prompted, click the address bar icon to allow permission, or adjust browser settings.`,
   },
   ja: {
     tagline: "あなたのBlueskyアイデンティティを運転免許証風カードにします。",
@@ -109,6 +110,7 @@ const I18N = {
     errEnter: "ハンドル または DID を入力してください",
     errNotFound: "プロフィールが見つかりません",
     errDownload: (m) => "ダウンロード失敗（アバター画像のCORS制限の可能性）: " + m,
+    errCompatibility: (m) => `${m} が制限されています。確認ダイアログが表示された場合は、アドレスバーのアイコンをクリックして許可するか、ブラウザ設定を調整してください。`,
   },
 };
 function detectLang() {
@@ -1312,6 +1314,44 @@ function normalizeActor(raw) {
   return raw;
 }
 
+function checkCompatibility() {
+  let canvasOk = false;
+  try {
+    const canvas = document.createElement("canvas");
+    canvasOk = !!(canvas.getContext && canvas.getContext("2d"));
+  } catch (e) {}
+
+  let readbackOk = false;
+  if (canvasOk) {
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#ff0000";
+        ctx.fillRect(0, 0, 2, 2);
+        const data = ctx.getImageData(0, 0, 1, 1).data;
+        readbackOk = (data[0] === 255);
+      }
+    } catch (e) {}
+  }
+
+  let webglOk = false;
+  try {
+    const canvas = document.createElement("canvas");
+    webglOk = !!(window.WebGLRenderingContext && (canvas.getContext("webgl") || canvas.getContext("experimental-webgl")));
+  } catch (e) {}
+
+  if (!canvasOk || !readbackOk || !webglOk) {
+    const missing = [];
+    if (!canvasOk || !readbackOk) missing.push("HTML5 Canvas readback");
+    if (!webglOk) missing.push("WebGL");
+    const msg = L().errCompatibility(missing.join(" and "));
+    throw new Error(msg);
+  }
+}
+
 async function issueFor(actor) {
   try {
     const data = await fetchProfile(actor);
@@ -1335,6 +1375,12 @@ async function issueFor(actor) {
 $("manual-btn").addEventListener("click", async () => {
   const raw = $("npub-input").value;
   if (!raw.trim()) { setStatus(L().errEnter, "error"); return; }
+  try {
+    checkCompatibility();
+  } catch (err) {
+    setStatus(err.message, "error");
+    return;
+  }
   const btn = $("manual-btn");
   btn.disabled = true;
   try {
