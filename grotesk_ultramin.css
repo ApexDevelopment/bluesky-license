@@ -1,0 +1,885 @@
+/* =============================================================================
+   apex.css — Grotesk Design System
+   Ultra-minimal, futuristic UI kit.
+   Fonts: Schibsted Grotesk (wordmark only), Space Grotesk (everything else)
+   Google Fonts link required in HTML:
+   https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@500;700&family=Space+Grotesk:wght@400;500;700&display=swap
+   ============================================================================= */
+
+/* -----------------------------------------------------------------------------
+   Tokens — dark (default)
+   ----------------------------------------------------------------------------- */
+
+:root {
+	--bg:           #08090a;
+	--bg-soft:      #0f1114;
+	--panel:        #12151a;
+	--panel-2:      #161a21;
+	--line:         rgba(255, 255, 255, 0.11);
+	--line-strong:  rgba(255, 255, 255, 0.22);
+	--text:         #edf1f5;
+	--text-dim:     rgba(237, 241, 245, 0.58);
+	--signal:       #c8ff3d;
+	--signal-soft:  rgba(200, 255, 61, 0.18);
+	--danger:       #ff4f4f;
+	--warn:         #7d4dff;
+	--font-ui:      "Space Grotesk", sans-serif;
+	--font-mark:    "Schibsted Grotesk", sans-serif;
+	--shadow:       0 24px 90px rgba(0, 0, 0, 0.48);
+}
+
+/* -----------------------------------------------------------------------------
+   Tokens — light (apply data-theme="light" to <body>)
+   ----------------------------------------------------------------------------- */
+
+body[data-theme="light"] {
+	--bg:           #ffffff;
+	--bg-soft:      #f6f8fb;
+	--panel:        #ffffff;
+	--panel-2:      #f8fafd;
+	--line:         rgba(14, 20, 31, 0.16);
+	--line-strong:  rgba(14, 20, 31, 0.3);
+	--text:         #131923;
+	--text-dim:     rgba(19, 25, 35, 0.62);
+	--signal:       #0b57d0;
+	--signal-soft:  rgba(11, 87, 208, 0.16);
+	--danger:       #b24a00;
+	--shadow:       0 18px 56px rgba(10, 20, 40, 0.14);
+}
+
+/* -----------------------------------------------------------------------------
+   Flat mode — apply data-flat="true" to <body> to collapse surface layers
+   ----------------------------------------------------------------------------- */
+
+body[data-flat="true"] .frame,
+body[data-flat="true"] .topbar,
+body[data-flat="true"] .side,
+body[data-flat="true"] .hero-card,
+body[data-flat="true"] .panel,
+body[data-flat="true"] .term {
+	background: var(--bg);
+}
+
+/* -----------------------------------------------------------------------------
+   Reset & base
+   ----------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font-ui);
+	letter-spacing: 0.01em;
+	-webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6, p {
+	margin: 0;
+}
+
+/* -----------------------------------------------------------------------------
+   App frame
+   ----------------------------------------------------------------------------- */
+
+.frame {
+	background: var(--panel);
+	box-shadow: var(--shadow);
+	overflow: hidden;
+	min-height: 100vh;
+	animation: rise 700ms ease-out both;
+}
+
+/* -----------------------------------------------------------------------------
+   Top bar
+   ----------------------------------------------------------------------------- */
+
+.topbar {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: 24px;
+	border-bottom: 1px solid var(--line);
+	padding: 18px 24px;
+	background: var(--bg-soft);
+}
+
+/* Wordmark — uses display font */
+.wordmark {
+	font-family: var(--font-mark);
+	font-size: clamp(19px, 2vw, 26px);
+	font-weight: 700;
+	letter-spacing: 0.07em;
+	white-space: nowrap;
+}
+
+/* Inline nav links */
+.nav {
+	display: flex;
+	align-items: center;
+	gap: 20px;
+	min-width: 0;
+	overflow-x: auto;
+	scrollbar-width: thin;
+}
+
+.nav span {
+	font-size: 12px;
+	color: var(--text-dim);
+	letter-spacing: 0.06em;
+	white-space: nowrap;
+}
+
+.nav span.on {
+	color: var(--signal);
+}
+
+/* Right-side meta/controls area */
+.meta {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	font-size: 12px;
+	color: var(--text-dim);
+	letter-spacing: 0.05em;
+	white-space: nowrap;
+}
+
+/* -----------------------------------------------------------------------------
+   Toggle switch
+   Usage: <button class="ui-switch" role="switch" aria-checked="false">
+            <span class="switch-label">Label</span>
+            <span class="switch-track" aria-hidden="true">
+              <span class="switch-thumb"></span>
+            </span>
+          </button>
+   Set aria-checked="true" to activate. JS must manage aria-checked.
+   ----------------------------------------------------------------------------- */
+
+.ui-switch {
+	display: inline-grid;
+	grid-template-columns: auto 34px;
+	align-items: center;
+	gap: 8px;
+	border: 1px solid var(--line-strong);
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	letter-spacing: 0.03em;
+	padding: 5px 8px;
+	cursor: pointer;
+	transition: border-color 180ms ease, color 180ms ease;
+}
+
+.ui-switch:hover {
+	border-color: var(--signal);
+	color: var(--signal);
+}
+
+.ui-switch:focus-visible {
+	outline: 1px solid var(--signal);
+	outline-offset: 2px;
+}
+
+.switch-label {
+	font-size: 11px;
+	letter-spacing: 0.03em;
+	color: var(--text-dim);
+}
+
+.switch-track {
+	width: 34px;
+	height: 18px;
+	border: 1px solid var(--line-strong);
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	background: var(--bg);
+}
+
+.switch-thumb {
+	width: 12px;
+	height: 12px;
+	background: var(--text-dim);
+	position: absolute;
+	left: 2px;
+	transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.ui-switch[aria-checked="true"] .switch-thumb {
+	transform: translateX(16px);
+	background: var(--signal);
+}
+
+/* -----------------------------------------------------------------------------
+   Range slider — square thumb on a thin rail, matches the switch geometry
+   Usage: <input type="range" class="ui-range" min="0" max="100" value="40">
+   ----------------------------------------------------------------------------- */
+
+.ui-range {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 100%;
+	height: 14px;
+	background: transparent;
+	cursor: pointer;
+}
+
+/* Rail */
+.ui-range::-webkit-slider-runnable-track {
+	height: 2px;
+	background: var(--line-strong);
+}
+
+.ui-range::-moz-range-track {
+	height: 2px;
+	background: var(--line-strong);
+}
+
+/* Filled portion (Firefox only — WebKit has no native progress fill) */
+.ui-range::-moz-range-progress {
+	height: 2px;
+	background: var(--signal);
+}
+
+/* Square thumb */
+.ui-range::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	appearance: none;
+	width: 12px;
+	height: 12px;
+	margin-top: -5px; /* centre the 12px thumb over the 2px rail */
+	background: var(--signal);
+	border: 0;
+}
+
+.ui-range::-moz-range-thumb {
+	width: 12px;
+	height: 12px;
+	border: 0;
+	border-radius: 0;
+	background: var(--signal);
+}
+
+.ui-range:focus-visible {
+	outline: 1px solid var(--signal);
+	outline-offset: 4px;
+}
+
+.ui-range:disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+/* -----------------------------------------------------------------------------
+   Checkbox — square box, signal fill + tick when checked
+   Usage: <label class="ui-check">
+            <input type="checkbox">
+            <span class="check-box" aria-hidden="true"></span>
+            <span class="check-label">Label</span>
+          </label>
+   ----------------------------------------------------------------------------- */
+
+.ui-check {
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	cursor: pointer;
+	user-select: none;
+}
+
+/* Hide the native control but keep it focusable / accessible */
+.ui-check input {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	opacity: 0;
+	margin: 0;
+}
+
+.check-box {
+	width: 16px;
+	height: 16px;
+	flex-shrink: 0;
+	border: 1px solid var(--line-strong);
+	background: var(--bg);
+	position: relative;
+	transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.ui-check:hover .check-box {
+	border-color: var(--signal);
+}
+
+.ui-check input:checked + .check-box {
+	background: var(--signal);
+	border-color: var(--signal);
+}
+
+/* Tick — drawn in the base colour so it reads on the signal fill */
+.ui-check input:checked + .check-box::after {
+	content: "";
+	position: absolute;
+	left: 5px;
+	top: 2px;
+	width: 4px;
+	height: 8px;
+	border: solid var(--bg);
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+
+.ui-check input:focus-visible + .check-box {
+	outline: 1px solid var(--signal);
+	outline-offset: 2px;
+}
+
+.check-label {
+	font-size: 12px;
+	letter-spacing: 0.03em;
+	color: var(--text-dim);
+}
+
+.ui-check input:disabled ~ .check-box,
+.ui-check input:disabled ~ .check-label {
+	opacity: 0.45;
+}
+
+.ui-check:has(input:disabled) {
+	cursor: not-allowed;
+}
+
+/* -----------------------------------------------------------------------------
+   Layout — sidebar + main
+   ----------------------------------------------------------------------------- */
+
+.layout {
+	display: grid;
+	grid-template-columns: 260px 1fr;
+	min-height: calc(100vh - 56px);
+}
+
+.side {
+	border-right: 1px solid var(--line);
+	padding: 22px;
+	background: var(--bg-soft);
+}
+
+.main {
+	display: grid;
+	grid-template-rows: auto auto 1fr auto;
+}
+
+/* -----------------------------------------------------------------------------
+   Sidebar list rows
+   Usage: <div class="chip [err]">
+            <span>Label</span>
+            <span class="state">Status</span>
+          </div>
+   ----------------------------------------------------------------------------- */
+
+.kicker {
+	margin: 0 0 16px;
+	font-size: 11px;
+	letter-spacing: 0.06em;
+	color: var(--text-dim);
+}
+
+.chip {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 14px 0;
+	border-bottom: 1px solid var(--line);
+	font-size: 13px;
+	letter-spacing: 0.03em;
+}
+
+.chip .state {
+	color: var(--signal);
+	font-size: 11px;
+	letter-spacing: 0.04em;
+}
+
+.chip.err .state {
+	color: var(--danger);
+}
+
+/* -----------------------------------------------------------------------------
+   Hero section
+   ----------------------------------------------------------------------------- */
+
+.hero {
+	display: grid;
+	gap: 16px;
+	border-bottom: 1px solid var(--line);
+	padding: 26px;
+}
+
+.hero-card {
+	background: var(--panel-2);
+	padding: 22px;
+	min-height: 160px;
+	position: relative;
+	overflow: hidden;
+}
+
+.title {
+	font-size: clamp(27px, 3.8vw, 44px);
+	line-height: 1;
+	letter-spacing: 0.04em;
+	margin-bottom: 18px;
+}
+
+.sub {
+	color: var(--text-dim);
+	font-size: 13px;
+	letter-spacing: 0.03em;
+	line-height: 1.95;
+}
+
+.status-line {
+	margin-top: 20px;
+	font-size: 12px;
+	letter-spacing: 0.04em;
+	color: var(--signal);
+}
+
+/* -----------------------------------------------------------------------------
+   Section label
+   ----------------------------------------------------------------------------- */
+
+.panel-title {
+	font-size: 11px;
+	color: var(--text-dim);
+	letter-spacing: 0.05em;
+	margin-bottom: 14px;
+}
+
+/* -----------------------------------------------------------------------------
+   Key/value data rows
+   Usage: <div class="line">
+            <span class="key">Label</span>
+            <span>Value</span>
+            <span class="ok|err">Status</span>
+          </div>
+   ----------------------------------------------------------------------------- */
+
+.line {
+	display: grid;
+	grid-template-columns: 140px 1fr auto;
+	gap: 12px;
+	border-bottom: 1px solid var(--line);
+	padding: 12px 0;
+	font-size: 12px;
+	letter-spacing: 0.03em;
+	align-items: center;
+}
+
+.line .key {
+	color: var(--text-dim);
+}
+
+.line .ok {
+	color: var(--signal);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.line .ok::before {
+	content: "";
+	flex-shrink: 0;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--signal);
+}
+
+.line .err {
+	color: var(--danger);
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+}
+
+.line .err::before {
+	content: "";
+	flex-shrink: 0;
+	width: 7px;
+	height: 7px;
+	background: var(--danger);
+	transform: rotate(45deg);
+}
+
+/* -----------------------------------------------------------------------------
+   Metrics strip
+   ----------------------------------------------------------------------------- */
+
+.metrics {
+	display: grid;
+	grid-template-columns: repeat(4, minmax(120px, 1fr));
+}
+
+.metric {
+	padding: 18px 20px;
+}
+
+.metric .n {
+	display: block;
+	font-size: clamp(20px, 2vw, 28px);
+	line-height: 1;
+	margin-top: 6px;
+	letter-spacing: 0.03em;
+}
+
+/* -----------------------------------------------------------------------------
+   Panel grid
+   ----------------------------------------------------------------------------- */
+
+.matrix {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 16px;
+	padding: 24px;
+}
+
+.panel {
+	background: var(--panel-2);
+	padding: 18px;
+	animation: rise 700ms ease-out both;
+}
+
+.panel:nth-child(2) { animation-delay: 90ms; }
+.panel:nth-child(3) { animation-delay: 170ms; }
+
+/* -----------------------------------------------------------------------------
+   Module rows (status dot + label + state)
+   Usage: <div class="module">
+            <span class="dot [off|warn]"></span>
+            <span>Label</span>
+            <span>State</span>
+          </div>
+   ----------------------------------------------------------------------------- */
+
+.module {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: 12px;
+	border-bottom: 1px solid var(--line);
+	padding: 12px 0;
+	font-size: 12px;
+	letter-spacing: 0.03em;
+}
+
+.dot {
+	width: 8px;
+	height: 8px;
+	background: var(--signal);
+	border-radius: 50%;
+	box-shadow: 0 0 10px var(--signal-soft);
+}
+
+.dot.off {
+	background: var(--danger);
+	border-radius: 0;
+	transform: rotate(45deg);
+	box-shadow: none;
+}
+
+.dot.warn {
+	background: var(--warn);
+	box-shadow: none;
+}
+
+/* In light mode, remove glow and add a subtle stroke for contrast */
+body[data-theme="light"] .dot {
+	box-shadow: none;
+	border: 1px solid rgba(19, 25, 35, 0.38);
+}
+
+/* -----------------------------------------------------------------------------
+   Console / terminal block
+   ----------------------------------------------------------------------------- */
+
+.term {
+	font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	font-size: 12px;
+	line-height: 1.85;
+	color: var(--text);
+	background: var(--panel);
+	padding: 14px;
+	height: 196px;
+	overflow: auto;
+}
+
+.term .muted { color: var(--text-dim); }
+
+.term .good { color: var(--signal); }
+.term .good::before { content: "+ "; font-weight: 700; }
+
+.term .bad  { color: var(--danger); }
+.term .bad::before  { content: "! "; font-weight: 700; }
+
+/* -----------------------------------------------------------------------------
+   Buttons
+   Usage: <button class="kbtn [kbtn-primary|kbtn-danger|kbtn-ghost]">
+   ----------------------------------------------------------------------------- */
+
+.kbtn {
+	border: 1px solid var(--line-strong);
+	background: transparent;
+	color: var(--text);
+	font: inherit;
+	font-size: 12px;
+	letter-spacing: 0.03em;
+	padding: 8px 12px;
+	cursor: pointer;
+	transition: border-color 180ms ease, color 180ms ease;
+}
+
+.kbtn:hover       { border-color: var(--signal); color: var(--signal); }
+.kbtn-primary     { border-color: var(--signal); color: var(--signal); }
+.kbtn-danger      { border-color: var(--danger); color: var(--danger); }
+.kbtn-ghost       { border-color: var(--line);   color: var(--text-dim); }
+
+/* -----------------------------------------------------------------------------
+   Segmented control
+   Usage: <div class="seg" role="tablist">
+            <button class="on">A</button>
+            <button>B</button>
+          </div>
+   ----------------------------------------------------------------------------- */
+
+.seg {
+	display: inline-flex;
+	border: 1px solid var(--line-strong);
+}
+
+.seg button {
+	border: 0;
+	background: transparent;
+	color: var(--text-dim);
+	font: inherit;
+	font-size: 11px;
+	letter-spacing: 0.03em;
+	padding: 8px 12px;
+	border-right: 1px solid var(--line);
+	cursor: pointer;
+}
+
+.seg button:last-child { border-right: 0; }
+
+.seg .on {
+	color: var(--text);
+	background: var(--bg);
+}
+
+/* -----------------------------------------------------------------------------
+   Status pills
+   Usage: <span class="pill [good|warn|bad]">Label</span>
+   ----------------------------------------------------------------------------- */
+
+.pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	border: 1px solid var(--line);
+	color: var(--text-dim);
+	font-size: 11px;
+	letter-spacing: 0.03em;
+	padding: 6px 9px;
+}
+
+.pill::before {
+	content: "";
+	flex-shrink: 0;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--text-dim);
+}
+
+.pill.good  { color: var(--signal); border-color: var(--signal); }
+.pill.good::before { background: var(--signal); }
+
+.pill.warn  { color: var(--warn); border-color: var(--warn); }
+.pill.warn::before { background: var(--warn); }
+
+.pill.bad   { color: var(--danger); border-color: var(--danger); }
+.pill.bad::before  { background: var(--danger); border-radius: 0; transform: rotate(45deg); }
+
+/* -----------------------------------------------------------------------------
+   Progress bars
+   Usage: <div class="bar [ticker] [warn|bad]" style="--val:68%"><span></span></div>
+   Add class "ticker" to enable the animated sweep. Remove it to disable.
+   ----------------------------------------------------------------------------- */
+
+.bar {
+	position: relative;
+	height: 10px;
+	background: var(--bg);
+	border: 1px solid var(--line);
+	overflow: hidden;
+}
+
+.bar > span {
+	position: absolute;
+	left: 0;
+	top: 0;
+	bottom: 0;
+	width: var(--val, 40%);
+	background: var(--signal);
+}
+
+.bar.ticker::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	width: 28px;
+	background: var(--line-strong);
+	animation: ticker 1.5s linear infinite;
+	opacity: 0.9;
+}
+
+.bar.warn > span { background: var(--warn); }
+.bar.bad  > span { background: var(--danger); }
+
+/* -----------------------------------------------------------------------------
+   Scrolling ticker feed
+   Usage:
+   <div class="ticker-feed">
+     <div class="ticker-track">
+       <div class="ticker-set">…items…</div>
+       <div class="ticker-set">…items (duplicate)…</div>
+     </div>
+   </div>
+   The two identical .ticker-set elements create a seamless loop.
+   ----------------------------------------------------------------------------- */
+
+.ticker-feed {
+	display: block;
+	font-size: 11px;
+	letter-spacing: 0.04em;
+	color: var(--text-dim);
+	white-space: nowrap;
+	overflow: hidden;
+}
+
+.ticker-track {
+	display: flex;
+	width: max-content;
+	animation: feed 11s linear infinite;
+	will-change: transform;
+}
+
+.ticker-set {
+	display: flex;
+	gap: 22px;
+	flex-shrink: 0;
+	padding-right: 22px;
+}
+
+/* -----------------------------------------------------------------------------
+   Keyframes
+   ----------------------------------------------------------------------------- */
+
+@keyframes ticker {
+	from { left: -28px; }
+	to   { left: calc(100% + 2px); }
+}
+
+@keyframes feed {
+	from { transform: translateX(0); }
+	to   { transform: translateX(-50%); }
+}
+
+@keyframes rise {
+	from { transform: translateY(8px); opacity: 0; }
+	to   { transform: translateY(0);   opacity: 1; }
+}
+
+/* -----------------------------------------------------------------------------
+   Reduced motion
+   ----------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+	.frame,
+	.panel,
+	.bar.ticker::after,
+	.ticker-track {
+		animation: none !important;
+	}
+
+	.ui-switch,
+	.switch-thumb,
+	.check-box,
+	.kbtn {
+		transition: none !important;
+	}
+}
+
+/* -----------------------------------------------------------------------------
+   Responsive breakpoints
+   ----------------------------------------------------------------------------- */
+
+@media (max-width: 1080px) {
+	.layout {
+		grid-template-columns: 1fr;
+	}
+
+	.side {
+		border-right: 0;
+		border-bottom: 1px solid var(--line);
+	}
+
+	.metrics {
+		grid-template-columns: repeat(2, minmax(120px, 1fr));
+	}
+
+	.matrix {
+		grid-template-columns: 1fr 1fr;
+	}
+
+	.line {
+		grid-template-columns: 96px 1fr auto;
+	}
+}
+
+@media (max-width: 620px) {
+	.topbar {
+		grid-template-columns: 1fr;
+		gap: 8px;
+	}
+
+	.meta {
+		text-align: left;
+	}
+
+	.metrics {
+		grid-template-columns: 1fr;
+	}
+
+	.matrix {
+		grid-template-columns: 1fr;
+	}
+
+	.line {
+		grid-template-columns: 1fr;
+		gap: 5px;
+	}
+
+	.line span:last-child {
+		justify-self: start;
+	}
+}

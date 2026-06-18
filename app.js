@@ -34,7 +34,7 @@ const L = () => I18N[LANG] || I18N.en;
 const I18N = {
   en: {
     tagline: "Turn your Bluesky identity into a driver's-license-style card.",
-    ph: "Handle or DID (e.g. user.bsky.social)",
+    ph: "alice.bsky.social",
     issue: "Issue", design: "Design", language: "Language", lang_auto: "Auto",
     avatarFit: "Square avatar (no cropping)",
     th_sky: "Bluesky (blue)", th_skyphoto: "Blue Sky photo", th_sunset: "Sunset", th_mint: "Mint", th_cyber: "Cyberpunk", th_gold: "Gold license",
@@ -1261,6 +1261,8 @@ async function renderCard(d, theme = "sky") {
   // Initialize or update the Three.js 3D view
   try {
     const container = $("three-container");
+    const panel = $("three-panel");
+    if (panel) panel.style.display = "block";
     container.style.display = "block";
     await renderCardBack(d, theme);
     if (!threeInitialized) {
@@ -1333,10 +1335,14 @@ async function issueFor(actor) {
 $("manual-btn").addEventListener("click", async () => {
   const raw = $("npub-input").value;
   if (!raw.trim()) { setStatus(L().errEnter, "error"); return; }
+  const btn = $("manual-btn");
+  btn.disabled = true;
   try {
     await issueFor(normalizeActor(raw));
   } catch (err) {
     setStatus(L().err(err?.message || err), "error");
+  } finally {
+    btn.disabled = false;
   }
 });
 $("npub-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("manual-btn").click(); });
@@ -1384,6 +1390,33 @@ try {
     try { localStorage.setItem("bsl_square", sq.checked ? "1" : "0"); } catch {}
     if (lastData) renderCard(lastData, $("theme-select").value);
   });
+} catch {}
+
+// ===== Light/Dark Theme toggle =====
+try {
+  const themeToggle = $("theme-toggle");
+  if (themeToggle) {
+    const savedTheme = localStorage.getItem("bsl_theme") || "dark";
+    if (savedTheme === "light") {
+      document.body.setAttribute("data-theme", "light");
+      themeToggle.setAttribute("aria-checked", "true");
+    } else {
+      document.body.removeAttribute("data-theme");
+      themeToggle.setAttribute("aria-checked", "false");
+    }
+    themeToggle.addEventListener("click", () => {
+      const isLight = themeToggle.getAttribute("aria-checked") === "true";
+      if (isLight) {
+        document.body.removeAttribute("data-theme");
+        themeToggle.setAttribute("aria-checked", "false");
+        try { localStorage.setItem("bsl_theme", "dark"); } catch {}
+      } else {
+        document.body.setAttribute("data-theme", "light");
+        themeToggle.setAttribute("aria-checked", "true");
+        try { localStorage.setItem("bsl_theme", "light"); } catch {}
+      }
+    });
+  }
 } catch {}
 
 $("download-btn").addEventListener("click", () => {
