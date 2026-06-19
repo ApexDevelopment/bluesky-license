@@ -17,6 +17,11 @@ const backCanvas = document.createElement("canvas");
 backCanvas.width = 1568;
 backCanvas.height = 984;
 
+// Offscreen clean front canvas for Three.js
+const threeFrontCanvas = document.createElement("canvas");
+threeFrontCanvas.width = 1568;
+threeFrontCanvas.height = 984;
+
 // Three.js state
 let scene, camera, renderer, cardMesh, cardTexture, maskTexture, backTexture, controls;
 let threeInitialized = false;
@@ -37,13 +42,13 @@ const I18N = {
     ph: "alice.bsky.social",
     issue: "Issue", design: "Design", language: "Language", lang_auto: "Auto",
     avatarFit: "Square avatar (no cropping)",
-    th_sky: "Bluesky (blue)", th_skyphoto: "Blue Sky photo", th_sunset: "Sunset", th_mint: "Mint", th_cyber: "Cyberpunk", th_gold: "Gold license",
+    th_sky: "Bluesky", th_skyphoto: "Blue Sky photo", th_sunset: "Sunset", th_mint: "Mint", th_cyber: "Cyberpunk", th_gold: "Gold", th_germ: "Germ",
     download: "Download PNG", about: "About / notes",
     a1: "Enter a Bluesky handle (e.g. <code>user.bsky.social</code> or a custom domain) or a DID, then press Issue.",
     a2: "Reads public AT Protocol data: profile, plus your posts / likes / follows (up to the most recent 1000) and the follower graph. No login required.",
     a3: "Stats: Web of Trust (mutual follows), Engagement, Generosity (likes given), Velocity, Streak, Veteran, Mileage, and peak posting hours (UTC).",
     a4: "HANDLE shows a green ✓ when the account is verified (custom-domain handle, or Bluesky verified / trusted-verifier status).",
-    a5: "This is an <strong>unofficial fan card</strong> for fun, not affiliated with Bluesky and not an official ID.",
+    a5: "This is not affiliated with Bluesky and is not an official ID.",
     glossary: "Glossary",
     glossaryHtml: `<dl class="glossary">
       <dt>Web of Trust</dt><dd>Mutual follows: people you follow who also follow you back.</dd>
@@ -57,7 +62,6 @@ const I18N = {
       <dt>DID</dt><dd>Your decentralized identifier (<code>did:plc:…</code>), which is the permanent ID behind your handle.</dd>
       <dt>Handle ✓</dt><dd>Your @handle. A green ✓ means verified: a custom-domain handle, or Bluesky verified / trusted-verifier status.</dd>
       <dt>License Class</dt><dd>A rank from your stats: Newcomer → Explorer → Citizen → Veteran.</dd>
-      <dt>Valid Thru</dt><dd>A playful "expiry": last activity + 3 years.</dd>
       <dt>Sampling</dt><dd>Analysis covers up to your most recent ~1000 posts/likes and up to 2500 follows (for mutuals). Bigger accounts show "+".</dd>
     </dl>`,
     canvasHint: "Enter a handle or DID and press Issue",
@@ -77,7 +81,7 @@ const I18N = {
     ph: "ハンドル または DID（例: user.bsky.social）",
     issue: "発行", design: "デザイン", language: "言語", lang_auto: "自動",
     avatarFit: "アイコンを正方形で表示（切り取りなし）",
-    th_sky: "Bluesky（ブルー）", th_skyphoto: "青空写真", th_sunset: "サンセット", th_mint: "ミント", th_cyber: "サイバーパンク", th_gold: "ゴールド",
+    th_sky: "Bluesky（ブルー）", th_skyphoto: "青空写真", th_sunset: "サンセット", th_mint: "ミント", th_cyber: "サイバーパンク", th_gold: "ゴールド", th_germ: "Germ",
     download: "PNGをダウンロード", about: "このサービスについて / 注意",
     a1: "Blueskyのハンドル（例: <code>user.bsky.social</code> やカスタムドメイン）または DID を入力して「発行」を押してください。",
     a2: "AT Protocol の公開データを読み込みます：プロフィールに加え、あなたの投稿／いいね／フォロー（直近最大1000件）とフォロワーグラフ。ログイン不要。",
@@ -97,7 +101,6 @@ const I18N = {
       <dt>DID</dt><dd>分散型ID（<code>did:plc:…</code>）。ハンドルの裏にある不変の識別子。</dd>
       <dt>Handle ✓</dt><dd>あなたの @ハンドル。緑の ✓ は認証済み（カスタムドメインのハンドル、または Bluesky の verified / trusted-verifier）。</dd>
       <dt>License Class</dt><dd>指標から決まるランク：Newcomer → Explorer → Citizen → Veteran。</dd>
-      <dt>Valid Thru</dt><dd>遊びの「有効期限」：最終アクティビティ＋3年。</dd>
       <dt>Sampling（取得上限）</dt><dd>解析は直近およそ1000件の投稿/いいね、相互フォローは最大2500フォローまで。超過は「+」表示。</dd>
     </dl>`,
     canvasHint: "ハンドル または DID を入力して「発行」",
@@ -260,6 +263,7 @@ function peakBand(timestamps) {
 
 // ===== Data fetching and analysis =====
 async function fetchProfile(actor) {
+  const isDebug = new URLSearchParams(window.location.search).get("debug") === "1";
   setStatus(L().stProfile);
   const p = await fetch(`${API}/app.bsky.actor.getProfile?actor=${encodeURIComponent(actor)}`)
     .then((r) => { if (!r.ok) throw new Error(L().errNotFound); return r.json(); });
@@ -271,22 +275,22 @@ async function fetchProfile(actor) {
   const ageDays = createdAt ? Math.max(1, (Date.now() / 1000 - createdAt) / 86400) : 1;
 
   // 投稿解析（エンゲージメント・連続日数・ピーク時間帯） / Post analysis: engagement, streak length, and peak posting time
-  const postRecs = await fetchAuthorPosts(did, MAX_RECORDS);
+  const postRecs = isDebug ? [] : await fetchAuthorPosts(did, MAX_RECORDS);
   const engagement = postRecs.reduce((a, r) => a + r.eng, 0);
   const streak = longestStreak(postRecs.map((r) => r.ts));
   const peakUTC = peakBand(postRecs.map((r) => r.ts));
   const postsCapped = postRecs.length >= MAX_RECORDS;
 
   // WoT (相互フォロー): 小さい側を全取得して getRelationships で相互判定 / Fetch the smaller side and detect mutuals through getRelationships
-  const wotRes = await computeWoT(did, p.followsCount, p.followersCount);
+  const wotRes = isDebug ? { wot: 0, capped: false } : await computeWoT(did, p.followsCount, p.followersCount);
   const wot = wotRes.wot;
   const wotCapped = wotRes.capped;
 
   // Generosity (付けたいいね総数): repo を直接参照 / Total likes given, counted directly from the repo
-  setStatus(L().stLikes);
   let likesGiven = 0, likesCapped = false;
   const pds = await resolvePds(did);
-  if (pds) {
+  if (pds && !isDebug) {
+    setStatus(L().stLikes);
     const r = await countRecords(pds, did, "app.bsky.feed.like", MAX_RECORDS);
     likesGiven = r.count;
     likesCapped = r.capped;
@@ -446,10 +450,14 @@ function drawButterfly(c, cx, cy, s, col) {
 function drawHexLogo(c, cx, cy, s, colA, colB) {
   c.save();
   hexPath(c, cx, cy, s);
-  const g = c.createLinearGradient(cx - s, cy - s, cx + s, cy + s);
-  g.addColorStop(0, colA);
-  g.addColorStop(1, colB);
-  c.fillStyle = g;
+  if (typeof colA === "string") {
+    const g = c.createLinearGradient(cx - s, cy - s, cx + s, cy + s);
+    g.addColorStop(0, colA);
+    g.addColorStop(1, colB);
+    c.fillStyle = g;
+  } else {
+    c.fillStyle = colA;
+  }
   c.fill();
   c.lineWidth = Math.max(1, s * 0.05);
   c.strokeStyle = "rgba(255,255,255,0.55)";
@@ -462,10 +470,14 @@ function drawCircleLogo(c, cx, cy, r, colA, colB) {
   c.save();
   c.beginPath();
   c.arc(cx, cy, r, 0, Math.PI * 2);
-  const g = c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
-  g.addColorStop(0, colA);
-  g.addColorStop(1, colB);
-  c.fillStyle = g;
+  if (typeof colA === "string") {
+    const g = c.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+    g.addColorStop(0, colA);
+    g.addColorStop(1, colB);
+    c.fillStyle = g;
+  } else {
+    c.fillStyle = colA;
+  }
   c.fill();
   c.lineWidth = Math.max(1, r * 0.05);
   c.strokeStyle = "rgba(255,255,255,0.55)";
@@ -575,7 +587,7 @@ async function renderCardBack(d, theme = "sky") {
 
   // Top header title
   c.fillStyle = t.accent;
-  c.font = "800 32px 'Hiragino Sans',sans-serif";
+  c.font = "800 32px 'Inter',sans-serif";
   c.textAlign = "center";
   c.fillText("AT PROTOCOL IDENTITY CARD", W / 2, 100);
 
@@ -635,11 +647,11 @@ async function renderCardBack(d, theme = "sky") {
   let rowY = 240;
   for (const row of rows) {
     c.fillStyle = t.sub;
-    c.font = "700 18px 'Hiragino Sans',sans-serif";
+    c.font = "700 18px 'Inter',sans-serif";
     c.fillText(row.label, fieldX, rowY);
 
     c.fillStyle = t.ink;
-    c.font = "600 24px 'SF Mono','Menlo','Consolas',monospace";
+    c.font = "600 24px 'JetBrains Mono',monospace";
     // Truncate value if too long to prevent spillover
     let valText = row.val;
     if (c.measureText(valText).width > 900) {
@@ -661,14 +673,14 @@ async function renderCardBack(d, theme = "sky") {
   c.fillStyle = t.sub;
   c.textAlign = "center";
   c.textBaseline = "top";
-  c.font = "600 22px 'SF Mono','Menlo','Consolas',monospace";
+  c.font = "600 22px 'JetBrains Mono',monospace";
   c.fillText(bcText, W / 2, 775);
 
   // Disclaimer text at the very bottom
   c.fillStyle = t.sub;
-  c.font = "500 16px 'Hiragino Sans',sans-serif";
+  c.font = "500 16px 'Inter',sans-serif";
   c.globalAlpha = 0.7;
-  c.fillText("This is an unofficial fan-made identity card cardholder back. No legal value.", W / 2, 850);
+  c.fillText("This is not an official identity card.", W / 2, 850);
   c.globalAlpha = 1;
 }
 
@@ -718,11 +730,37 @@ function drawShield(c, cx, cy, w, h, t) {
   c.fillStyle = t.accent2;
   c.textAlign = "center";
   c.textBaseline = "middle";
-  c.font = "800 22px 'Hiragino Sans',sans-serif";
+  c.font = "800 22px 'Inter',sans-serif";
   c.fillText("VERIFIED", cx, cy + h * 0.06);
-  c.font = "800 17px 'Hiragino Sans',sans-serif";
+  c.font = "800 17px 'Inter',sans-serif";
   c.fillText("DID DOCUMENT", cx, cy + h * 0.20);
 
+  c.restore();
+}
+
+function drawHoloOverlay(c, cx, cy, w, h) {
+  c.save();
+  drawShieldPath(c, cx, cy, w, h);
+  c.clip();
+  const x = cx - w / 2, y = cy - h / 2;
+  const hg = c.createLinearGradient(x - 50, y - 50, x + w + 50, y + h + 50);
+  hg.addColorStop(0.0, "rgba(255, 0, 0, 0.0)");
+  hg.addColorStop(0.15, "rgba(255, 0, 0, 0.14)");
+  hg.addColorStop(0.3, "rgba(255, 127, 0, 0.14)");
+  hg.addColorStop(0.45, "rgba(255, 255, 0, 0.14)");
+  hg.addColorStop(0.6, "rgba(0, 255, 0, 0.14)");
+  hg.addColorStop(0.75, "rgba(0, 0, 255, 0.14)");
+  hg.addColorStop(0.9, "rgba(139, 0, 255, 0.14)");
+  hg.addColorStop(1.0, "rgba(139, 0, 255, 0.0)");
+  c.fillStyle = hg;
+  c.fill();
+
+  const hg2 = c.createLinearGradient(x, y, x + w, y + h);
+  hg2.addColorStop(0.35, "rgba(255,255,255,0)");
+  hg2.addColorStop(0.5, "rgba(255,255,255,0.25)");
+  hg2.addColorStop(0.65, "rgba(255,255,255,0)");
+  c.fillStyle = hg2;
+  c.fill();
   c.restore();
 }
 
@@ -803,7 +841,7 @@ function drawStatIcon(c, name, x, y, s, color) {
 function drawStarRating(c, x, y, n, size, fill, empty) {
   c.textAlign = "left";
   c.textBaseline = "middle";
-  c.font = `${size}px 'Hiragino Sans','Apple Color Emoji',sans-serif`;
+  c.font = `${size}px 'Inter','Apple Color Emoji',sans-serif`;
   for (let i = 0; i < 5; i++) {
     c.fillStyle = i < n ? fill : empty;
     c.fillText(i < n ? "★" : "☆", x + i * size * 0.96, y);
@@ -869,20 +907,23 @@ const THEMES = {
   mint:     { accent: "#10a37f", accent2: "#0a7d8c", ink: "#0e2a26", sub: "#3a6a60", line: "#a8e0d0", border: "#10a37f", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eefbf6", "#eef6f4", "#f2fbf8"] },
   cyber:    { accent: "#0a9fc0", accent2: "#d6249f", ink: "#142539", sub: "#3a5066", line: "#9bd3e2", border: "#0a9fc0", gold1: "#bcae72", gold2: "#8c7a38", paper: ["#eafaff", "#eef0fb", "#fde8f6"] },
   gold:     { accent: "#b4863a", accent2: "#9a6b1e", ink: "#2a2206", sub: "#5a4d22", line: "#dcc79a", border: "#b4863a", gold1: "#e6cd84", gold2: "#b4863a", paper: ["#fffaf0", "#fff4e2", "#fdeed6"] },
+  germ:     { accent: "#00b2ff", accent2: "#00e676", ink: "#051d30", sub: "#2c4c64", line: "#7de1ff", border: "#00b2ff", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#c0ecff", "#a8f9d0", "#bbfce7"] },
 };
 
 // ===== Card rendering (premium holographic look / English labels) =====
-async function renderCard(d, theme = "sky") {
+async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = false, updateMask = false) {
   const t = THEMES[theme] || THEMES.sky;
-  const c = ctx;
-  const W = canvas.width, H = canvas.height; // 1568 x 984
+  const c = targetCanvas.getContext("2d");
+  const W = targetCanvas.width, H = targetCanvas.height; // 1568 x 984
   c.clearRect(0, 0, W, H);
   c.lineCap = "round";
   c.lineJoin = "round";
 
-  // Clear the offscreen holographic mask canvas
-  const mCtx = maskCanvas.getContext("2d");
-  mCtx.clearRect(0, 0, W, H);
+  let mCtx = null;
+  if (updateMask) {
+    mCtx = maskCanvas.getContext("2d");
+    mCtx.clearRect(0, 0, W, H);
+  }
 
   let flightFont = false;
   try {
@@ -931,9 +972,23 @@ async function renderCard(d, theme = "sky") {
     off.width = W; off.height = H;
     const g = off.getContext("2d");
     g.lineCap = "round"; g.lineJoin = "round";
+
+    let holoGrad = null;
+    if (useHolo) {
+      holoGrad = g.createLinearGradient(0, 0, W, H);
+      holoGrad.addColorStop(0.0, "rgba(255, 90, 90, 0.95)");
+      holoGrad.addColorStop(0.15, "rgba(255, 170, 70, 0.95)");
+      holoGrad.addColorStop(0.3, "rgba(240, 240, 70, 0.95)");
+      holoGrad.addColorStop(0.45, "rgba(70, 230, 110, 0.95)");
+      holoGrad.addColorStop(0.6, "rgba(70, 200, 240, 0.95)");
+      holoGrad.addColorStop(0.75, "rgba(80, 100, 255, 0.95)");
+      holoGrad.addColorStop(0.9, "rgba(180, 80, 255, 0.95)");
+      holoGrad.addColorStop(1.0, "rgba(255, 100, 230, 0.95)");
+    }
+
     for (let i = 0; i < 78; i++) {
       const yy = 26 + i * 12.4;
-      g.strokeStyle = i % 2 ? t.line : t.accent;
+      g.strokeStyle = useHolo ? holoGrad : (i % 2 ? t.line : t.accent);
       g.lineWidth = 1;
       g.beginPath();
       for (let x = 24; x <= W - 24; x += 5) {
@@ -944,7 +999,7 @@ async function renderCard(d, theme = "sky") {
     }
     for (let j = 0; j < 50; j++) {
       const xx = 24 + j * 31;
-      g.strokeStyle = j % 2 ? t.accent : t.line;
+      g.strokeStyle = useHolo ? holoGrad : (j % 2 ? t.accent : t.line);
       g.lineWidth = 1;
       g.beginPath();
       for (let y = 24; y <= H - 24; y += 6) {
@@ -953,14 +1008,14 @@ async function renderCard(d, theme = "sky") {
       }
       g.stroke();
     }
-    guilloche(g, W * 0.20, H * 0.34, 230, 74, 9, 26, t.accent, 1, 1);
-    guilloche(g, W * 0.20, H * 0.34, 150, 52, 14, 26, t.accent2, 1, 1);
-    guilloche(g, W * 0.50, H * 0.50, 380, 104, 7, 30, t.accent, 1, 1);
-    guilloche(g, W * 0.50, H * 0.50, 250, 84, 17, 26, t.accent2, 1, 1);
-    guilloche(g, W * 0.83, H * 0.72, 210, 66, 11, 24, t.accent2, 1, 1);
-    guilloche(g, W * 0.83, H * 0.72, 130, 46, 16, 24, t.accent, 1, 1);
+    guilloche(g, W * 0.20, H * 0.34, 230, 74, 9, 26, useHolo ? holoGrad : t.accent, 1, 1);
+    guilloche(g, W * 0.20, H * 0.34, 150, 52, 14, 26, useHolo ? holoGrad : t.accent2, 1, 1);
+    guilloche(g, W * 0.50, H * 0.50, 380, 104, 7, 30, useHolo ? holoGrad : t.accent, 1, 1);
+    guilloche(g, W * 0.50, H * 0.50, 250, 84, 17, 26, useHolo ? holoGrad : t.accent2, 1, 1);
+    guilloche(g, W * 0.83, H * 0.72, 210, 66, 11, 24, useHolo ? holoGrad : t.accent2, 1, 1);
+    guilloche(g, W * 0.83, H * 0.72, 130, 46, 16, 24, useHolo ? holoGrad : t.accent, 1, 1);
     for (const [px, py] of [[110, 120], [W - 120, 120], [120, H - 110], [W - 120, H - 110]]) {
-      guilloche(g, px, py, 70, 26, 13, 18, t.accent, 1, 1);
+      guilloche(g, px, py, 70, 26, 13, 18, useHolo ? holoGrad : t.accent, 1, 1);
     }
     g.globalCompositeOperation = "destination-out";
     const fade = g.createLinearGradient(0, 0, 0, H);
@@ -975,12 +1030,14 @@ async function renderCard(d, theme = "sky") {
     c.restore();
 
     // Copy the background waves and guilloches into the holographic mask canvas
-    mCtx.drawImage(off, 0, 0);
-    mCtx.save();
-    mCtx.globalCompositeOperation = "source-in";
-    mCtx.fillStyle = "#ffffff";
-    mCtx.fillRect(0, 0, W, H);
-    mCtx.restore();
+    if (updateMask && mCtx) {
+      mCtx.drawImage(off, 0, 0);
+      mCtx.save();
+      mCtx.globalCompositeOperation = "source-in";
+      mCtx.fillStyle = "#ffffff";
+      mCtx.fillRect(0, 0, W, H);
+      mCtx.restore();
+    }
   }
 
   const streak = c.createLinearGradient(0, 0, W, H);
@@ -1016,17 +1073,27 @@ async function renderCard(d, theme = "sky") {
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
   c.fillStyle = "#11151c";
-  c.font = "800 76px 'Hiragino Sans','Yu Gothic','Arial Black',sans-serif";
+  c.font = "800 76px 'Inter', sans-serif";
   c.fillText("BLUESKY LICENSE", PAD, 118);
   c.fillStyle = t.accent;
-  c.font = "italic 600 30px 'Hiragino Sans','Georgia',serif";
+  c.font = "italic 600 30px 'Inter', sans-serif";
   c.fillText("Your handle, your identity.", PAD + 4, 158);
 
   c.textAlign = "right";
   c.fillStyle = t.accent;
-  c.font = "800 30px 'Hiragino Sans',sans-serif";
+  c.font = "800 30px 'Inter', sans-serif";
   c.fillText("BLUESKY SOCIAL", W - PAD - 86, 102);
   drawHexLogo(c, W - PAD - 36, 90, 40, t.accent, t.accent2);
+
+  if (updateMask && mCtx) {
+    mCtx.save();
+    mCtx.fillStyle = "#ffffff";
+    mCtx.textAlign = "right";
+    mCtx.font = "800 30px 'Inter', sans-serif";
+    mCtx.fillText("BLUESKY SOCIAL", W - PAD - 86, 102);
+    drawHexLogo(mCtx, W - PAD - 36, 90, 40, "#ffffff", "#ffffff");
+    mCtx.restore();
+  }
 
   c.strokeStyle = t.line;
   c.lineWidth = 2;
@@ -1076,7 +1143,7 @@ async function renderCard(d, theme = "sky") {
     c.fillStyle = t.sub;
     c.textAlign = "center";
     c.textBaseline = "middle";
-    c.font = "22px sans-serif";
+    c.font = "22px 'Inter', sans-serif";
     c.fillText("NO IMAGE", phX + phW / 2, phY + phH / 2);
   }
   c.restore();
@@ -1095,71 +1162,82 @@ async function renderCard(d, theme = "sky") {
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
 
-  drawPill(c, "NAME", lx, 208, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
+  drawPill(c, "NAME", lx, 208, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
   c.fillStyle = t.ink;
-  let np = 58; // 長い表示名は枠内に収まるまで縮小 / Shrink long display names until they fit in the field
+  let np = 46; // 長い表示名は枠内に収まるまで縮小 / Shrink long display names until they fit in the field
   while (np > 20) {
-    c.font = `800 ${np}px 'Hiragino Sans','Yu Gothic',sans-serif`;
+    c.font = `800 ${np}px 'Inter', sans-serif`;
     if (c.measureText(d.name).width <= fieldMaxW) break;
     np -= 2;
   }
-  c.fillText(d.name, lx, 292);
+  c.fillText(d.name, lx, 278);
 
   // HANDLE（検証マーク付き） / Handle field with verification mark
-  drawPill(c, "HANDLE", lx, 354, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
+  drawPill(c, "HANDLE", lx, 314, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
   const handleText = d.handle ? "@" + d.handle : "—";
   let hp = 32;
   while (hp > 14) {
-    c.font = `600 ${hp}px 'SF Mono','Menlo','Consolas',monospace`;
+    c.font = `600 ${hp}px 'JetBrains Mono', monospace`;
     if (c.measureText(handleText).width <= fieldMaxW - 36) break;
     hp -= 1;
   }
   c.fillStyle = t.ink;
-  c.fillText(handleText, lx, 420);
+  c.fillText(handleText, lx, 376);
   if (d.handle && d.verified) {
     const aw = c.measureText(handleText).width;
-    c.font = "700 28px 'Hiragino Sans',sans-serif";
+    c.font = "700 28px 'Inter', sans-serif";
     c.fillStyle = "#1c9e57";
-    c.fillText("✓", lx + aw + 12, 419);
+    c.fillText("✓", lx + aw + 12, 375);
   }
 
   // DID
-  drawPill(c, "DID", lx, 475, { bg: t.accent, fg: "#fff", font: "700 22px 'Hiragino Sans',sans-serif", h: 34 });
+  drawPill(c, "DID", lx, 408, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
   c.fillStyle = t.ink;
   let dp = 28;
   while (dp > 13) {
-    c.font = `600 ${dp}px 'SF Mono','Menlo','Consolas',monospace`;
+    c.font = `600 ${dp}px 'JetBrains Mono', monospace`;
     if (c.measureText(d.did).width <= fieldMaxW) break;
     dp -= 1;
   }
-  c.fillText(d.did, lx, 541);
+  c.fillText(d.did, lx, 468);
 
-  // 下段：ISSUED / CREATED / LICENSE CLASS（HANDLE との間に余白を確保） / Lower row: ISSUED / CREATED / LICENSE CLASS, with extra space preserved from HANDLE
-  // MILEAGE / PEAK はステータスパネル内のフッターに表示（下段の詰まりを回避） / Show MILEAGE and PEAK in the status-panel footer to avoid crowding this row
-  const THREE_YEARS = 3 * 365.25 * 24 * 3600;
+  // PDS
+  drawPill(c, "PDS", lx, 500, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
+  const pdsText = d.pds || "https://bsky.social";
+  let pp = 28;
+  c.fillStyle = t.ink;
+  while (pp > 13) {
+    c.font = `600 ${pp}px 'JetBrains Mono', monospace`;
+    if (c.measureText(pdsText).width <= fieldMaxW) break;
+    pp -= 1;
+  }
+  c.fillText(pdsText, lx, 560);
+
+  // 下段：ISSUED / CREATED / LICENSE CLASS
   const col = [lx, lx + 230, lx + 450];
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
-  const r1 = 595;
+  const r1 = 615;
   c.fillStyle = t.sub;
-  c.font = "700 19px 'Hiragino Sans',sans-serif";
+  c.font = "700 19px 'Inter', sans-serif";
   c.fillText("ISSUED", col[0], r1);
   c.fillText("CREATED", col[1], r1);
   c.fillText("LICENSE CLASS", col[2], r1);
   c.fillStyle = t.ink;
-  c.font = "400 25px 'Hiragino Sans',sans-serif";
+  c.font = "400 25px 'Inter', sans-serif";
   c.fillText(fmtISO(Math.floor(Date.now() / 1000)), col[0], r1 + 30);
   c.fillText(d.createdAt ? fmtISO(d.createdAt) : "—", col[1], r1 + 30);
-  drawPill(c, rank, col[2], r1 + 16, { bg: t.accent2, fg: "#fff", font: "700 21px 'Hiragino Sans',sans-serif", h: 34 });
+  drawPill(c, rank, col[2], r1 + 12, { bg: t.accent2, fg: "#fff", font: "700 21px 'Inter', sans-serif", h: 34 });
+
   // ===== Right column =====
   const rlx = 1270;
   const rcx = 1384;
   c.textAlign = "left";
   c.fillStyle = t.sub;
-  c.font = "700 22px 'Hiragino Sans',sans-serif";
+  c.font = "700 22px 'Inter', sans-serif";
   c.fillText("LICENSE NO.", rlx, 222);
   c.fillStyle = t.ink;
-  c.font = "500 25px 'Hiragino Sans',sans-serif";
+  c.font = "500 25px 'Inter', sans-serif";
   c.fillText(licenseNo(d), rlx, 260);
 
   if (d._qr) {
@@ -1209,7 +1287,7 @@ async function renderCard(d, theme = "sky") {
   c.fillStyle = "#3a2c08";
   c.textAlign = "left";
   c.textBaseline = "middle";
-  c.font = "800 24px 'Hiragino Sans',sans-serif";
+  c.font = "800 24px 'Inter', sans-serif";
   c.fillText("BLUESKY FLYER PROFILE", tbX + 24, tbY + tbH / 2 + 1);
   c.restore();
 
@@ -1224,7 +1302,7 @@ async function renderCard(d, theme = "sky") {
     c.fillStyle = t.ink;
     c.textAlign = "left";
     c.textBaseline = "middle";
-    c.font = "700 27px 'Hiragino Sans',sans-serif";
+    c.font = "700 27px 'Inter', sans-serif";
     c.fillText(s.label, cxp + 44, cyp);
     drawStarRating(c, cxp + 296, cyp, s.n, 28, "#1e2a5a", "#b9c1d7");
   }
@@ -1236,46 +1314,34 @@ async function renderCard(d, theme = "sky") {
   c.restore();
   const fy = pnY + 194;
   c.textAlign = "left"; c.textBaseline = "alphabetic";
-  c.fillStyle = t.sub; c.font = "700 18px 'Hiragino Sans',sans-serif";
+  c.fillStyle = t.sub; c.font = "700 18px 'Inter', sans-serif";
   c.fillText("MILEAGE", colX[0], fy);
-  c.fillStyle = t.ink; c.font = "700 22px 'SF Mono','Menlo','Consolas',monospace";
+  c.fillStyle = t.ink; c.font = "700 22px 'JetBrains Mono', monospace";
   c.fillText(d.posts.toLocaleString("en-US"), colX[0] + 104, fy);
-  c.fillStyle = t.sub; c.font = "700 18px 'Hiragino Sans',sans-serif";
+  c.fillStyle = t.sub; c.font = "700 18px 'Inter', sans-serif";
   c.fillText("PEAK (UTC)", colX[1], fy);
-  c.fillStyle = t.ink; c.font = "700 22px 'Hiragino Sans',sans-serif";
+  c.fillStyle = t.ink; c.font = "700 22px 'Inter', sans-serif";
   c.fillText(d.peakUTC, colX[1] + 144, fy);
 
   // ===== Seal and verification label (bottom right) =====
   const shX = 1384, shY = 765, shW = 200, shH = 240;
   drawShield(c, shX, shY, shW, shH, t);
 
-  // Draw the shield into the offscreen holographic mask canvas and finalize the mask
-  mCtx.fillStyle = "#ffffff";
-  drawShieldPath(mCtx, shX, shY, shW, shH);
-  mCtx.fill();
+  if (updateMask && mCtx) {
+    mCtx.fillStyle = "#ffffff";
+    drawShieldPath(mCtx, shX, shY, shW, shH);
+    mCtx.fill();
 
-  mCtx.save();
-  mCtx.globalCompositeOperation = "destination-over";
-  mCtx.fillStyle = "#000000";
-  mCtx.fillRect(0, 0, W, H);
-  mCtx.restore();
+    mCtx.save();
+    mCtx.globalCompositeOperation = "destination-over";
+    mCtx.fillStyle = "#000000";
+    mCtx.fillRect(0, 0, W, H);
+    mCtx.restore();
+  }
 
-  // Initialize or update the Three.js 3D view
-  try {
-    const container = $("three-container");
-    const panel = $("three-panel");
-    if (panel) panel.style.display = "block";
-    container.style.display = "block";
-    await renderCardBack(d, theme);
-    if (!threeInitialized) {
-      initThree(container, canvas, maskCanvas, backCanvas);
-    } else {
-      cardTexture.needsUpdate = true;
-      maskTexture.needsUpdate = true;
-      backTexture.needsUpdate = true;
-    }
-  } catch (e) {
-    console.error("Three.js initialization/update error:", e);
+  // Draw the static holographic rainbow sheen over the 2D canvas shield
+  if (useHolo) {
+    drawHoloOverlay(c, shX, shY, shW, shH);
   }
 
   // ===== Bottom tagline =====
@@ -1292,13 +1358,55 @@ async function renderCard(d, theme = "sky") {
   c.fillStyle = "#2a3550";
   c.textAlign = "left";
   c.textBaseline = "middle";
-  c.font = "600 25px 'Hiragino Sans',sans-serif";
+  c.font = "600 25px 'Inter', sans-serif";
   c.fillText("Fly the open social web.", PAD + 64, capY);
 
   c.fillStyle = t.accent;
   c.textAlign = "right";
-  c.font = "800 25px 'Hiragino Sans',sans-serif";
+  c.font = "800 25px 'Inter', sans-serif";
   c.fillText("SEE YOU IN THE SKY.", W - PAD, capY);
+}
+
+async function renderCard(d, theme = "sky") {
+  // Preload web fonts
+  try {
+    await Promise.all([
+      document.fonts.load("400 12px 'Inter'"),
+      document.fonts.load("500 12px 'Inter'"),
+      document.fonts.load("600 12px 'Inter'"),
+      document.fonts.load("700 12px 'Inter'"),
+      document.fonts.load("800 12px 'Inter'"),
+      document.fonts.load("500 12px 'JetBrains Mono'"),
+      document.fonts.load("600 12px 'JetBrains Mono'"),
+      document.fonts.load("700 12px 'JetBrains Mono'")
+    ]);
+  } catch (e) {
+    console.warn("Failed to pre-load Inter/JetBrains Mono fonts:", e);
+  }
+
+  // 1. Draw clean version to offscreen threeFrontCanvas, updating mask
+  await drawCardFaceToCanvas(threeFrontCanvas, d, theme, false, true);
+
+  // 2. Draw holographic version to visible canvas (no mask updates)
+  await drawCardFaceToCanvas(canvas, d, theme, true, false);
+
+  // 3. Initialize or update Three.js using the clean offscreen canvas
+  try {
+    const container = $("three-container");
+    const panel = $("three-panel");
+    if (panel) panel.style.display = "block";
+    container.style.display = "block";
+    await renderCardBack(d, theme);
+    if (!threeInitialized) {
+      initThree(container, threeFrontCanvas, maskCanvas, backCanvas);
+    } else {
+      cardTexture.needsUpdate = true;
+      maskTexture.needsUpdate = true;
+      backTexture.needsUpdate = true;
+    }
+  } catch (e) {
+    console.error("Three.js initialization/update error:", e);
+  }
 
   $("download-btn").disabled = false;
 }
@@ -1413,7 +1521,7 @@ function drawPlaceholder() {
   ctx.stroke();
   guilloche(ctx, canvas.width * 0.5, canvas.height * 0.5, 320, 90, 7, 18, t.accent, 0.06, 1);
   ctx.fillStyle = t.sub;
-  ctx.font = "700 30px 'Hiragino Sans','Noto Sans JP',sans-serif";
+  ctx.font = "700 30px 'Inter',sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(L().canvasHint, canvas.width / 2, canvas.height / 2);
@@ -1544,6 +1652,34 @@ async function initThree(container, cardCanvas, maskCanvas, backCanvas) {
         return c;
       }
 
+      bool isInsideShield(vec2 uv) {
+        float u_c = 1384.0 / 1568.0;
+        float v_c = 1.0 - 765.0 / 984.0;
+        float w = 200.0 / 1568.0;
+        float h = 240.0 / 984.0;
+
+        float dx = (uv.x - u_c) / (w * 0.5);
+        float dy = (uv.y - v_c) / (h * 0.5);
+
+        if (abs(dx) > 1.0 || dy < -1.0 || dy > 1.0) {
+          return false;
+        }
+
+        float adx = abs(dx);
+
+        if (dy > 0.6) {
+          float max_x = (1.0 - dy) / 0.4;
+          if (adx > max_x) return false;
+        }
+        else if (dy < -0.1) {
+          float norm_y = (dy + 0.1) / -0.9;
+          float max_x = 1.0 - norm_y * norm_y;
+          if (adx > max_x) return false;
+        }
+
+        return true;
+      }
+
       void main() {
         if (vObjectNormalZ < 0.0) {
           vec2 backUv = vec2(1.0 - vUv.x, vUv.y);
@@ -1560,10 +1696,30 @@ async function initThree(container, cardCanvas, maskCanvas, backCanvas) {
           discard;
         }
 
+        vec3 normal = normalize(vNormal);
+        bool inShield = isInsideShield(vUv);
+
+        if (inShield) {
+          float gridSpacing = 16.0;
+          vec2 gridUv = (vUv * vec2(1568.0, 984.0)) / gridSpacing;
+          
+          vec2 center = floor(gridUv) + 0.5;
+          vec2 diff = gridUv - center;
+          float dist = length(diff);
+          float r_bump = 0.28;
+          
+          if (dist < r_bump) {
+            float slope = sin((1.0 - dist / r_bump) * 1.570796);
+            vec2 dir = normalize(diff);
+            float strength = 0.38;
+            normal.xy += dir * slope * strength;
+            normal = normalize(normal);
+          }
+        }
+
         float mask = texture2D(tHoloMask, vUv).r;
 
         if (mask > 0.05) {
-          vec3 normal = normalize(vNormal);
           float dotNL = dot(normal, vec3(0.0, 0.0, 1.0));
           float shift = normal.x * 2.2 + normal.y * 2.2 + vWorldPosition.x * 0.3 + vWorldPosition.y * 0.3 + sin(uTime * 0.8) * 0.25;
           vec3 holoColor = getRainbow(shift);
@@ -1571,6 +1727,13 @@ async function initThree(container, cardCanvas, maskCanvas, backCanvas) {
           vec3 spec = holoColor * 0.45 * mask * (0.15 + 0.85 * max(0.0, dotNL));
           cardColor.rgb += spec;
         }
+
+        if (inShield) {
+          vec3 lightDir = normalize(vec3(0.3, 0.4, 0.8));
+          float diffFactor = dot(normal, lightDir);
+          cardColor.rgb *= (0.9 + 0.15 * max(0.0, diffFactor));
+        }
+
         gl_FragColor = cardColor;
       }
     `,

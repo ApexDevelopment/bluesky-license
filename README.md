@@ -16,7 +16,7 @@ python3 -m http.server 8899   # or npx serve
 ```
 
 - **Issue**: enter a handle (`user.bsky.social` or a custom domain) or a `did:...`, press Issue.
-- Designs: Bluesky (blue) / Cyberpunk / Gold license.
+- Designs: Bluesky / Cyberpunk / Gold.
 
 ## On the card
 
