@@ -81,7 +81,7 @@ const I18N = {
     ph: "ハンドル または DID（例: user.bsky.social）",
     issue: "発行", design: "デザイン", language: "言語", lang_auto: "自動",
     avatarFit: "アイコンを正方形で表示（切り取りなし）",
-    th_sky: "Bluesky（ブルー）", th_skyphoto: "青空写真", th_sunset: "サンセット", th_mint: "ミント", th_cyber: "サイバーパンク", th_gold: "ゴールド", th_germ: "Germ",
+    th_sky: "Bluesky（ブルー）", th_skyphoto: "青空写真", th_sunset: "サンセット", th_mint: "ミント", th_cyber: "サイバーパンク", th_gold: "ゴールド", th_germ: "Germ（胚芽）",
     download: "PNGをダウンロード", about: "このサービスについて / 注意",
     a1: "Blueskyのハンドル（例: <code>user.bsky.social</code> やカスタムドメイン）または DID を入力して「発行」を押してください。",
     a2: "AT Protocol の公開データを読み込みます：プロフィールに加え、あなたの投稿／いいね／フォロー（直近最大1000件）とフォロワーグラフ。ログイン不要。",
@@ -700,9 +700,9 @@ function drawShield(c, cx, cy, w, h, t) {
   const x = cx - w / 2, y = cy - h / 2;
   drawShieldPath(c, cx, cy, w, h);
   const g = c.createLinearGradient(x, y, x + w, y + h);
-  g.addColorStop(0, "#dfeeff");
-  g.addColorStop(0.5, "#dce8ff");
-  g.addColorStop(1, "#e2f3ff");
+  g.addColorStop(0, t.shield[0]);
+  g.addColorStop(0.5, t.shield[1]);
+  g.addColorStop(1, t.shield[2]);
   c.fillStyle = g;
   c.fill();
   c.lineWidth = 2.5;
@@ -900,14 +900,14 @@ function drawAirplane(c, x, cy, color) {
 }
 
 const THEMES = {
-  sky:      { accent: "#1185fe", accent2: "#0a63d6", ink: "#10243f", sub: "#3a5680", line: "#9fc0ef", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eef5ff", "#eef1fc", "#f2f6ff"] },
+  sky:      { title: "#11151c", accent: "#1185fe", accent2: "#0a63d6", accent3: "#1185fe", ink: "#10243f", secondaryInk: "#2a3550", reverseInk: "#ffffff", sub: "#3a5680", line: "#9fc0ef", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", panel: ["#f6efdc", "#efe6cf"], paper: ["#eef5ff", "#eef1fc", "#f2f6ff"], shield: ["#dfeeff", "#dce8ff", "#e2f3ff"], filledStar: "#1e2a5a", emptyStar: "#b9c1d7" },
   // 青空写真モード（ユーザー撮影の写真を薄く敷く） / Blue-sky photo mode with a lightly overlaid user-shot background image
-  skyphoto: { accent: "#0a63d6", accent2: "#0a4fb0", ink: "#0e244f", sub: "#33507e", line: "#bcd6f5", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#f4f9ff", "#eef5ff", "#f6fbff"], photo: "bg/sky1.jpg", photoAlpha: 0.34 },
-  sunset:   { accent: "#e2603a", accent2: "#c23b6a", ink: "#3a1f24", sub: "#7a4a52", line: "#f0b9a0", border: "#e2603a", gold1: "#e8c074", gold2: "#c98a3a", paper: ["#fff3ec", "#ffeef0", "#fff0e6"] },
-  mint:     { accent: "#10a37f", accent2: "#0a7d8c", ink: "#0e2a26", sub: "#3a6a60", line: "#a8e0d0", border: "#10a37f", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#eefbf6", "#eef6f4", "#f2fbf8"] },
-  cyber:    { accent: "#0a9fc0", accent2: "#d6249f", ink: "#142539", sub: "#3a5066", line: "#9bd3e2", border: "#0a9fc0", gold1: "#bcae72", gold2: "#8c7a38", paper: ["#eafaff", "#eef0fb", "#fde8f6"] },
-  gold:     { accent: "#b4863a", accent2: "#9a6b1e", ink: "#2a2206", sub: "#5a4d22", line: "#dcc79a", border: "#b4863a", gold1: "#e6cd84", gold2: "#b4863a", paper: ["#fffaf0", "#fff4e2", "#fdeed6"] },
-  germ:     { accent: "#00b2ff", accent2: "#00e676", ink: "#051d30", sub: "#2c4c64", line: "#7de1ff", border: "#00b2ff", gold1: "#dcc07f", gold2: "#b48a3c", paper: ["#c0ecff", "#a8f9d0", "#bbfce7"] },
+  skyphoto: { title: "#11151c", accent: "#0a63d6", accent2: "#0a4fb0", accent3: "#0a63d6", ink: "#0e244f", secondaryInk: "#2a3550", reverseInk: "#ffffff", sub: "#33507e", line: "#bcd6f5", border: "#1185fe", gold1: "#dcc07f", gold2: "#b48a3c", panel: ["#f6efdc", "#efe6cf"], paper: ["#f4f9ff", "#eef5ff", "#f6fbff"], shield: ["#dfeeff", "#dce8ff", "#e2f3ff"], filledStar: "#1e2a5a", emptyStar: "#b9c1d7", photo: "bg/sky1.jpg", photoAlpha: 0.34 },
+  sunset:   { title: "#11151c", accent: "#e2603a", accent2: "#c23b6a", accent3: "#e2603a", ink: "#3a1f24", secondaryInk: "#2a3550", reverseInk: "#ffffff", sub: "#7a4a52", line: "#f0b9a0", border: "#e2603a", gold1: "#e8c074", gold2: "#c98a3a", panel: ["#f6efdc", "#efe6cf"], paper: ["#fff3ec", "#ffeef0", "#fff0e6"], shield: ["#dfeeff", "#dce8ff", "#e2f3ff"], filledStar: "#1e2a5a", emptyStar: "#b9c1d7" },
+  mint:     { title: "#11151c", accent: "#10a37f", accent2: "#0a7d8c", accent3: "#10a37f", ink: "#0e2a26", secondaryInk: "#2a3550", reverseInk: "#ffffff", sub: "#3a6a60", line: "#a8e0d0", border: "#10a37f", gold1: "#dcc07f", gold2: "#b48a3c", panel: ["#f6efdc", "#efe6cf"], paper: ["#eefbf6", "#eef6f4", "#f2fbf8"], shield: ["#dfeeff", "#dce8ff", "#e2f3ff"], filledStar: "#1e2a5a", emptyStar: "#b9c1d7" },
+  cyber:    { title: "#11151c", accent: "#0a9fc0", accent2: "#d6249f", accent3: "#0a9fc0", ink: "#142539", secondaryInk: "#2a3550", reverseInk: "#ffffff", sub: "#3a5066", line: "#9bd3e2", border: "#0a9fc0", gold1: "#bcae72", gold2: "#8c7a38", panel: ["#f6efdc", "#efe6cf"], paper: ["#eafaff", "#eef0fb", "#fde8f6"], shield: ["#dfeeff", "#dce8ff", "#e2f3ff"], filledStar: "#1e2a5a", emptyStar: "#b9c1d7" },
+  gold:     { title: "#11151c", accent: "#b4863a", accent2: "#9a6b1e", accent3: "#b4863a", ink: "#2a2206", secondaryInk: "#2a3550", reverseInk: "#ffffff", sub: "#5a4d22", line: "#dcc79a", border: "#b4863a", gold1: "#e6cd84", gold2: "#b4863a", panel: ["#f6efdc", "#efe6cf"], paper: ["#fffaf0", "#fff4e2", "#fdeed6"], shield: ["#dfeeff", "#dce8ff", "#e2f3ff"], filledStar: "#1e2a5a", emptyStar: "#b9c1d7" },
+  germ:     { title: "#7ee459", accent: "#ff7ce5", accent2: "#7ee459", accent3: "#4183ff", ink: "#f2f2f2", secondaryInk: "#f2f2f2", reverseInk: "#1f1e1f", sub: "#ffa400", line: "#7ee459", border: "#7ee459", gold1: "#7ee459", gold2: "#7ee459", panel: ["#141516", "#104225"], paper: ["#1f1e1f", "#104225", "#1f1e1f"], shield: ["#1f1e1f", "#104225", "#1f1e1f"], filledStar: "#ff7ce5", emptyStar: "#b9c1d7" },
 };
 
 // ===== Card rendering (premium holographic look / English labels) =====
@@ -1072,7 +1072,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   // ===== Header =====
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
-  c.fillStyle = "#11151c";
+  c.fillStyle = t.title;
   c.font = "800 76px 'Inter', sans-serif";
   c.fillText("BLUESKY LICENSE", PAD, 118);
   c.fillStyle = t.accent;
@@ -1080,7 +1080,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   c.fillText("Your handle, your identity.", PAD + 4, 158);
 
   c.textAlign = "right";
-  c.fillStyle = t.accent;
+  c.fillStyle = t.accent3;
   c.font = "800 30px 'Inter', sans-serif";
   c.fillText("BLUESKY SOCIAL", W - PAD - 86, 102);
   drawHexLogo(c, W - PAD - 36, 90, 40, t.accent, t.accent2);
@@ -1162,7 +1162,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   c.textAlign = "left";
   c.textBaseline = "alphabetic";
 
-  drawPill(c, "NAME", lx, 208, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
+  drawPill(c, "NAME", lx, 208, { bg: t.accent, fg: t.reverseInk, font: "700 22px 'Inter', sans-serif", h: 34 });
   c.fillStyle = t.ink;
   let np = 46; // 長い表示名は枠内に収まるまで縮小 / Shrink long display names until they fit in the field
   while (np > 20) {
@@ -1173,7 +1173,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   c.fillText(d.name, lx, 278);
 
   // HANDLE（検証マーク付き） / Handle field with verification mark
-  drawPill(c, "HANDLE", lx, 314, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
+  drawPill(c, "HANDLE", lx, 314, { bg: t.accent, fg: t.reverseInk, font: "700 22px 'Inter', sans-serif", h: 34 });
   const handleText = d.handle ? "@" + d.handle : "—";
   let hp = 32;
   while (hp > 14) {
@@ -1191,7 +1191,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   }
 
   // DID
-  drawPill(c, "DID", lx, 408, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
+  drawPill(c, "DID", lx, 408, { bg: t.accent, fg: t.reverseInk, font: "700 22px 'Inter', sans-serif", h: 34 });
   c.fillStyle = t.ink;
   let dp = 28;
   while (dp > 13) {
@@ -1202,7 +1202,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   c.fillText(d.did, lx, 468);
 
   // PDS
-  drawPill(c, "PDS", lx, 500, { bg: t.accent, fg: "#fff", font: "700 22px 'Inter', sans-serif", h: 34 });
+  drawPill(c, "PDS", lx, 500, { bg: t.accent, fg: t.reverseInk, font: "700 22px 'Inter', sans-serif", h: 34 });
   const pdsText = d.pds || "https://bsky.social";
   let pp = 28;
   c.fillStyle = t.ink;
@@ -1227,8 +1227,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   c.font = "400 25px 'Inter', sans-serif";
   c.fillText(fmtISO(Math.floor(Date.now() / 1000)), col[0], r1 + 30);
   c.fillText(d.createdAt ? fmtISO(d.createdAt) : "—", col[1], r1 + 30);
-  drawPill(c, rank, col[2], r1 + 12, { bg: t.accent2, fg: "#fff", font: "700 21px 'Inter', sans-serif", h: 34 });
-
+  drawPill(c, rank, col[2], r1 + 12, { bg: t.accent2, fg: t.reverseInk, font: "700 21px 'Inter', sans-serif", h: 34 });
   // ===== Right column =====
   const rlx = 1270;
   const rcx = 1384;
@@ -1256,8 +1255,8 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   c.shadowBlur = 16;
   c.shadowOffsetY = 6;
   const pg = c.createLinearGradient(pnX, pnY, pnX, pnY + pnH);
-  pg.addColorStop(0, "#f6efdc");
-  pg.addColorStop(1, "#efe6cf");
+  pg.addColorStop(0, t.panel[0]);
+  pg.addColorStop(1, t.panel[1]);
   roundRect(c, pnX, pnY, pnW, pnH, 12);
   c.fillStyle = pg;
   c.fill();
@@ -1304,7 +1303,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
     c.textBaseline = "middle";
     c.font = "700 27px 'Inter', sans-serif";
     c.fillText(s.label, cxp + 44, cyp);
-    drawStarRating(c, cxp + 296, cyp, s.n, 28, "#1e2a5a", "#b9c1d7");
+    drawStarRating(c, cxp + 296, cyp, s.n, 28, t.filledStar, t.emptyStar);
   }
 
   // パネル内フッター：MILEAGE / PEAK（区切り線つき） / Panel footer: MILEAGE / PEAK with a divider line
@@ -1347,7 +1346,7 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   // ===== Bottom tagline =====
   const capY = 936;
   if (flightFont) {
-    c.fillStyle = t.accent;
+    c.fillStyle = t.accent3;
     c.textAlign = "left";
     c.textBaseline = "middle";
     c.font = '400 40px "Material Symbols Outlined"';
@@ -1355,13 +1354,13 @@ async function drawCardFaceToCanvas(targetCanvas, d, theme = "sky", useHolo = fa
   } else {
     drawAirplane(c, PAD, capY, t.accent);
   }
-  c.fillStyle = "#2a3550";
+  c.fillStyle = t.secondaryInk;
   c.textAlign = "left";
   c.textBaseline = "middle";
   c.font = "600 25px 'Inter', sans-serif";
   c.fillText("Fly the open social web.", PAD + 64, capY);
 
-  c.fillStyle = t.accent;
+  c.fillStyle = t.accent3;
   c.textAlign = "right";
   c.font = "800 25px 'Inter', sans-serif";
   c.fillText("SEE YOU IN THE SKY.", W - PAD, capY);
